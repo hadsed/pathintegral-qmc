@@ -57,6 +57,10 @@ def bits2spins(vec):
     """ Convert a bitvector @vec to a spinvector. """
     return [ 1 if k == 1 else -1 for k in vec ]
 
+def IsingEnergy(spins, J):
+    """ Calculate energy for Ising graph @J in configuration @spins. """
+    return np.dot(spins, np.dot(J, spins))
+
 def MetropolisAccept(svec, fidx, J, B):
     """
     The Metropolis rule is given by accepting a proposed move s0 -> s1
@@ -72,12 +76,13 @@ def MetropolisAccept(svec, fidx, J, B):
     Returns: True if move is accepted
              False if rejected
     """
-    s0 = np.matrix(svec, dtype=np.float64).T
-    s1 = s0.copy()
-    s1[fidx] *= -1
-    energyDiff = np.exp(s0.T*J*s0 - s1.T*J*s1)
+    e0 = IsingEnergy(svec, J)
+    svec[fidx] *= -1
+    e1 = IsingEnergy(svec, J)
+    svec[fidx] *= -1  # we're dealing with the original array, so flip back
+    energyDiff = np.exp(e0 - e1)
     # Accept or reject (if it's greater than the random sample, it
-     # will always be accepted since it's bounded by [0, 1]).
+    # will always be accepted since it's bounded by [0, 1]).
     if energyDiff > np.random.uniform(0,1):
         return True
     else:
@@ -85,8 +90,8 @@ def MetropolisAccept(svec, fidx, J, B):
 
 # Random initial configuration of spins
 spinVector = bits2spins(np.random.random_integers(0, 1, nSpins))
-print spinVector
-print np.matrix(spinVector)*isingJ*np.matrix(spinVector).T
+# print spinVector
+print "Initial energy: ", IsingEnergy(spinVector, isingJ)
 # Track accepted moves
 accepted = 0
 # How much to reduce the temperature at each step
@@ -105,7 +110,17 @@ for temp in (preAnnealingTemperature - k*instTempStep
                                 1./(kboltz*temp)):
                 spinVector[idx] *= -1
                 accepted += 1  # track acceptances
-print "Final temperature: ", temp
-print "Final state: ", spinVector
-print "Number of accepted moves: ", accepted
-print "Final energy: ", np.matrix(spinVector)*isingJ*np.matrix(spinVector).T
+
+# print "Final temperature: ", temp
+# print "Final state: ", spinVector
+# print "Number of accepted moves: ", accepted
+print "Final energy: ", IsingEnergy(spinVector, isingJ)
+
+
+#
+# Quantum Monte Carlo:
+#
+# Copy pre-annealed configuration as the initial configuration for all
+# Trotter slices and carry out the true quantum annealing dynamics.
+#
+
