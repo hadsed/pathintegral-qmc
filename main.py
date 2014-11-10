@@ -8,37 +8,30 @@ Description: Do everything (will break this up later, if needed)
 '''
 
 import numpy as np
-import scipy.constants as spconst
 
 
 #
 # Initialize some parameters
 #
 
-# Boltzmann constant
-kboltz = spconst.k
-
 # MC steps per spin for pre-annealing stage to set initial config
-preAnnealingSteps = 50
+preAnnealingSteps = 1
 # Pre-annealing initial temperature
 preAnnealingTemperature = 3.0
 
-# Number of MC steps in actual annealing
-annealingSteps = 100
 # Number of Trotter slices
 trotterSlices = 20
 # Ambient temperature
 annealingTemperature = 0.01
-
+# Number of MC steps in actual annealing
+annealingSteps = 100
 # Transverse field starting strength
 transFieldStart = 1.5
 # Transverse field end
 transFieldEnd = 1e-8
-# Step size for linear annealing schedule
-transFieldStep = 0.1
 
 # Number of spins in 2D Ising model
-nSpins = 20
+nSpins = 40
 # Random number generator
 rng = np.random.RandomState(1234)
 # The quantum Ising coupling matrix
@@ -55,13 +48,13 @@ isingJ = np.triu(rng.uniform(low=-2, high=2, size=(nSpins, nSpins)))
 
 def bits2spins(vec):
     """ Convert a bitvector @vec to a spinvector. """
-    return [ 1 if k == 1 else -1 for k in vec ]
+    return np.array([ 1 if k == 1 else -1 for k in vec ])
 
 def ClassicalIsingEnergy(spins, J):
     """ Calculate energy for Ising graph @J in configuration @spins. """
-    return np.dot(spins, np.dot(J, spins))
+    return -np.dot(spins, np.dot(J, spins))
 
-def ClassicalMetropolisAccept(svec, fidx, J, B):
+def ClassicalMetropolisAccept(svec, fidx, J, T):
     """
     The Metropolis rule is given by accepting a proposed move s0 -> s1
     with an acceptance probability of:
@@ -71,7 +64,7 @@ def ClassicalMetropolisAccept(svec, fidx, J, B):
     Input: @svec is the spin vector
            @fidx is the spin move to be accepted or rejected
            @J is the Ising coupling matrix
-           @B is beta, i.e., (kboltz*temperature)^-1
+           @T is the ambient temperature
 
     Returns: True if move is accepted
              False if rejected
@@ -80,7 +73,7 @@ def ClassicalMetropolisAccept(svec, fidx, J, B):
     svec[fidx] *= -1
     e1 = ClassicalIsingEnergy(svec, J)
     svec[fidx] *= -1  # we're dealing with the original array, so flip back
-    energyDiff = np.exp(e0 - e1)
+    energyDiff = np.exp((e0 - e1)/T)
     # Accept or reject (if it's greater than the random sample, it
     # will always be accepted since it's bounded by [0, 1]).
     if energyDiff > np.random.uniform(0,1):
@@ -90,27 +83,27 @@ def ClassicalMetropolisAccept(svec, fidx, J, B):
 
 # Random initial configuration of spins
 spinVector = bits2spins(np.random.random_integers(0, 1, nSpins))
-# print spinVector
 print "Initial energy: ", ClassicalIsingEnergy(spinVector, isingJ)
-# How much to reduce the temperature at each step
-instTempStep = (preAnnealingTemperature - annealingTemperature) \
-    /float(preAnnealingSteps)
 
-# Loop over temperatures
-for temp in (preAnnealingTemperature - k*instTempStep 
-             for k in xrange(preAnnealingSteps+1)):
-    # Loop over pre-annealing steps
-    for step in xrange(preAnnealingSteps):
-        # Loop over spins
-        for idx, spin in enumerate(spinVector):
-            # Attempt to flip this spin
-            if ClassicalMetropolisAccept(spinVector, idx, isingJ, 
-                                1./(kboltz*temp)):
-                spinVector[idx] *= -1
+if preAnnealingSteps > 0:
+    # How much to reduce the temperature at each step
+    instTempStep = (preAnnealingTemperature - annealingTemperature) \
+        /float(preAnnealingSteps)
+    # Loop over temperatures
+    for temp in (preAnnealingTemperature - k*instTempStep 
+                 for k in xrange(preAnnealingSteps+1)):
+        # Loop over pre-annealing steps
+        for step in xrange(preAnnealingSteps):
+            # Loop over spins
+            for idx, spin in enumerate(spinVector):
+                # Attempt to flip this spin
+                if ClassicalMetropolisAccept(spinVector, idx, isingJ, 
+                                    temp):
+                    spinVector[idx] *= -1
 
 # print "Final temperature: ", temp
 # print "Final state: ", spinVector
-print "Final energy: ", ClassicalIsingEnergy(spinVector, isingJ)
+print "Final pre-annealing energy: ", ClassicalIsingEnergy(spinVector, isingJ)
 
 
 #
@@ -140,10 +133,11 @@ def QuantumIsingEnergy(spins, tspins, J, T, P, G):
     Returns: the energy as a float
 
     """
+    spins = np.array(spins)
     firstTerm = np.dot(spins, np.dot(J, spins))
-    secondTerm = np.zeros(J.shape)
-    np.fill_diagonal(secondTerm, -P*T/2.)
-
+    Jperp = np.diag([-P*T/2.*np.log(np.tanh(G/(P*T)))]*(spins.size-1), 1)
+    secondTerm = np.dot(spins, np.dot(Jperp, spins))
+    return -P*(firstTerm+secondTerm)
 
 def QuantumMetropolisAccept(svec, fidx, tvec, J, T, P, G):
     """
@@ -165,17 +159,20 @@ def QuantumMetropolisAccept(svec, fidx, tvec, J, T, P, G):
     svec[fidx] *= -1
     e1 = QuantumIsingEnergy(svec, tvec, J, T, P, G)
     svec[fidx] *= -1  # we're dealing with the original array, so flip back
-    energyDiff = np.exp(e0 - e1)
+    energyDiff = np.exp((e0 - e1)/T)
+    # print e0, e1
     if energyDiff > np.random.uniform(0,1):
         return True
     else:
         return False
 
-
 # Copy spin system over all the Trotter slices
-configurations = [ spinVector.copy() for k in xrange(trotterSlices) ]
+configurations = [ spinVector[:] for k in xrange(trotterSlices) ]
+# Calculate number of steps to decrease transverse field
+transFieldStep = ((transFieldStart-transFieldEnd)/annealingSteps)
 # Loop over transverse field annealing schedule
-for field in xrange(transFieldStart, transFieldEnd, transFieldStep):
+for field in (transFieldStart - k*transFieldStep 
+              for k in xrange(annealingSteps+1)):
     # Loop over Trotter slices
     for itslice, tslice in enumerate(configurations):
         # Loop over spins
@@ -183,5 +180,13 @@ for field in xrange(transFieldStart, transFieldEnd, transFieldStep):
             # Grab nearest-neighbor spin vector across Trotter slices
             trotterSpins = [ vec[ispin] for vec in configurations ]
             # Attempt to flip this spin
-            if QuantumMetropolisAccept(spinVector, idx, trotterSpins, isingJ)):
-                spinVector[idx] *= -1
+            if QuantumMetropolisAccept(spinVector, ispin, trotterSpins, isingJ,
+                                       annealingTemperature, trotterSlices,
+                                       field):
+                spinVector[ispin] *= -1
+    # for config in configurations:
+    #     print config
+    # print "next\n\n\n"
+
+print "Final quantum annealing energy: ", \
+      ClassicalIsingEnergy(configurations[0], isingJ)
