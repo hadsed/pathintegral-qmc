@@ -14,10 +14,11 @@ import numpy as np
 # Initialize some parameters
 #
 
-# MC steps per spin for pre-annealing stage to set the initial
-# configurations for the quantum simulation. Set to zero for a
-# random start.
-preAnnealingSteps = 0
+# Do a classical annealing from a random start to the starting QMC
+# temperature. Set to False for pure random start to quantum simulation.
+preAnnealing = True
+# MC steps per spin for pre-annealing stage
+preAnnealingSteps = 10
 # Pre-annealing initial temperature
 preAnnealingTemperature = 3.0
 
@@ -87,7 +88,7 @@ def ClassicalMetropolisAccept(svec, fidx, J, T):
 spinVector = bits2spins(np.random.random_integers(0, 1, nSpins))
 print "Initial energy: ", ClassicalIsingEnergy(spinVector, isingJ)
 
-if preAnnealingSteps > 0:
+if preAnnealing:
     # How much to reduce the temperature at each step
     instTempStep = (preAnnealingTemperature - annealingTemperature) \
         /float(preAnnealingSteps)
@@ -162,7 +163,6 @@ def QuantumMetropolisAccept(svec, fidx, tvec, J, T, P, G):
     e1 = QuantumIsingEnergy(svec, tvec, J, T, P, G)
     svec[fidx] *= -1  # we're dealing with the original array, so flip back
     energyDiff = np.exp((e0 - e1)/T)
-    # print e0, e1
     if energyDiff > np.random.uniform(0,1):
         return True
     else:
