@@ -8,23 +8,24 @@ Description: Do everything (will break this up later, if needed)
 '''
 
 import numpy as np
-
+import scipy.sparse as sps
 
 #
 # Initialize some parameters
 #
 
-# MC steps per spin for pre-annealing stage to set the initial
-# configurations for the quantum simulation. Set to zero for a
-# random start.
-preAnnealingSteps = 0
+# Do a classical annealing from a random start to the starting QMC
+# temperature. Set to False for pure random start to quantum simulation.
+preAnnealing = True
+# MC steps per spin for pre-annealing stage
+preAnnealingSteps = 1
 # Pre-annealing initial temperature
 preAnnealingTemperature = 3.0
 
 # Number of Trotter slices
 trotterSlices = 20
 # Ambient temperature
-annealingTemperature = 0.01
+annealingTemperature = 0.01e0
 # Number of MC steps in actual annealing
 annealingSteps = 100
 # Transverse field starting strength
@@ -32,13 +33,13 @@ transFieldStart = 1.5
 # Transverse field end
 transFieldEnd = 1e-8
 
-# Number of spins in 2D Ising model
-nSpins = 40
+# Number of rows in 2D square Ising model
+nRows = 8
+nSpins = nRows**2
 # Random number generator
 rng = np.random.RandomState(1234)
 # The quantum Ising coupling matrix
 isingJ = np.triu(rng.uniform(low=-2, high=2, size=(nSpins, nSpins)))
-
 
 #
 # Pre-annealing stage:
@@ -50,13 +51,13 @@ isingJ = np.triu(rng.uniform(low=-2, high=2, size=(nSpins, nSpins)))
 
 def bits2spins(vec):
     """ Convert a bitvector @vec to a spinvector. """
-    return np.array([ 1 if k == 1 else -1 for k in vec ])
+    return [ 1 if k == 1 else -1 for k in vec ]
 
 def ClassicalIsingEnergy(spins, J):
     """ Calculate energy for Ising graph @J in configuration @spins. """
     return -np.dot(spins, np.dot(J, spins))
 
-def ClassicalMetropolisAccept(svec, fidx, J, T):
+def ClassicalMetropolisAccept(rng, svec, fidx, J, T):
     """
     The Metropolis rule is given by accepting a proposed move s0 -> s1
     with an acceptance probability of:
@@ -75,32 +76,33 @@ def ClassicalMetropolisAccept(svec, fidx, J, T):
     svec[fidx] *= -1
     e1 = ClassicalIsingEnergy(svec, J)
     svec[fidx] *= -1  # we're dealing with the original array, so flip back
-    energyDiff = np.exp((e0 - e1)/T)
     # Accept or reject (if it's greater than the random sample, it
     # will always be accepted since it's bounded by [0, 1]).
-    if energyDiff > np.random.uniform(0,1):
+    if (e0 - e1) > 0.0:
+        return True
+    if np.exp((e0 - e1)/T) > rng.uniform(0,1):
         return True
     else:
         return False
 
 # Random initial configuration of spins
-spinVector = bits2spins(np.random.random_integers(0, 1, nSpins))
+spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nSpins) ])
 print "Initial energy: ", ClassicalIsingEnergy(spinVector, isingJ)
 
-if preAnnealingSteps > 0:
+if preAnnealing:
     # How much to reduce the temperature at each step
     instTempStep = (preAnnealingTemperature - annealingTemperature) \
         /float(preAnnealingSteps)
     # Loop over temperatures
     for temp in (preAnnealingTemperature - k*instTempStep 
                  for k in xrange(preAnnealingSteps+1)):
-        # Loop over pre-annealing steps
+        # Do some number of Monte Carlo steps
         for step in xrange(preAnnealingSteps):
             # Loop over spins
-            for idx, spin in enumerate(spinVector):
+            for idx in rng.permutation(range(spinVector.size)):
                 # Attempt to flip this spin
-                if ClassicalMetropolisAccept(spinVector, idx, isingJ, 
-                                    temp):
+                if ClassicalMetropolisAccept(rng, spinVector, idx, 
+                                             isingJ, temp):
                     spinVector[idx] *= -1
 
 # print "Final temperature: ", temp
@@ -115,7 +117,7 @@ print "Final pre-annealing energy: ", ClassicalIsingEnergy(spinVector, isingJ)
 # Trotter slices and carry out the true quantum annealing dynamics.
 #
 
-def QuantumIsingEnergy(spins, tspins, J, T, P, G):
+def QuantumIsingEnergy(spins, tspins, J, Jperp):
     """
     Calculate the energy of the following Ising Hamiltonian with an 
     extra dimension along the Trotter slices:
@@ -135,13 +137,11 @@ def QuantumIsingEnergy(spins, tspins, J, T, P, G):
     Returns: the energy as a float
 
     """
-    spins = np.array(spins)
     firstTerm = np.dot(spins, np.dot(J, spins))
-    Jperp = np.diag([-P*T/2.*np.log(np.tanh(G/(P*T)))]*(spins.size-1), 1)
-    secondTerm = np.dot(spins, np.dot(Jperp, spins))
-    return -P*(firstTerm+secondTerm)
+    secondTerm = np.dot(tspins, Jperp.dot(tspins))
+    return -tspins.size*(firstTerm+secondTerm)
 
-def QuantumMetropolisAccept(svec, fidx, tvec, J, T, P, G):
+def QuantumMetropolisAccept(rng, svec, fidx, tvec, J, Jperp, T):
     """
     Essentially the same as ClassicalMetropolisAccept(), except that
     we use a different calculation for the energies.
@@ -157,38 +157,54 @@ def QuantumMetropolisAccept(svec, fidx, tvec, J, T, P, G):
              False if rejected
 
     """
-    e0 = QuantumIsingEnergy(svec, tvec, J, T, P, G)
+    e0 = QuantumIsingEnergy(svec, tvec, J, Jperp)
     svec[fidx] *= -1
-    e1 = QuantumIsingEnergy(svec, tvec, J, T, P, G)
+    e1 = QuantumIsingEnergy(svec, tvec, J, Jperp)
     svec[fidx] *= -1  # we're dealing with the original array, so flip back
-    energyDiff = np.exp((e0 - e1)/T)
-    # print e0, e1
-    if energyDiff > np.random.uniform(0,1):
+    if (e0 - e1) > 0.0:  # avoid overflow
+        return True
+    if np.exp((e0 - e1)/T) > rng.uniform(0,1):
         return True
     else:
         return False
 
 # Copy spin system over all the Trotter slices
-configurations = [ spinVector[:] for k in xrange(trotterSlices) ]
+configurations = [ spinVector.copy() for k in xrange(trotterSlices) ]
+# configurations = [ np.array(bits2spins(rng.random_integers(0, 1, nSpins))) 
+#                    for k in xrange(trotterSlices) ]
+
+# Create 1D Ising matrix corresponding to extra dimension
+# perpJ = np.diag([1.0]*(trotterSlices-1), 1)
+# perpJ[0,-1] = 1.0  # periodic boundary conditions
+perpJ = sps.dia_matrix(([[-trotterSlices*annealingTemperature/2.], 
+                         [-trotterSlices*annealingTemperature/2.]], 
+                        [1, trotterSlices-1]), 
+                       shape=(trotterSlices, trotterSlices))
 # Calculate number of steps to decrease transverse field
 transFieldStep = ((transFieldStart-transFieldEnd)/annealingSteps)
 # Loop over transverse field annealing schedule
 for field in (transFieldStart - k*transFieldStep 
               for k in xrange(annealingSteps+1)):
+    # Calculate new coefficient for 1D Ising J
+    perpJCoeff = np.log(np.tanh(field/(trotterSlices*annealingTemperature)))
+    calculatedPerpJ = perpJCoeff*perpJ
     # Loop over Trotter slices
-    for itslice, tslice in enumerate(configurations):
+    for islice in rng.permutation(range(trotterSlices)):
+        # print "Trotter slice: ", islice
         # Loop over spins
-        for ispin, spin in enumerate(xrange(nSpins)):
+        for ispin in rng.permutation(range(nSpins)):
             # Grab nearest-neighbor spin vector across Trotter slices
             trotterSpins = np.array([ vec[ispin] for vec in configurations ])
             # Attempt to flip this spin
-            if QuantumMetropolisAccept(spinVector, ispin, trotterSpins, isingJ,
-                                       annealingTemperature, trotterSlices,
-                                       field):
-                spinVector[ispin] *= -1
-    # for config in configurations:
-    #     print config
-    # print "next\n\n\n"
+            if QuantumMetropolisAccept(rng, configurations[islice], ispin, 
+                                       trotterSpins, isingJ, 
+                                       calculatedPerpJ, annealingTemperature):
+                configurations[islice][ispin] *= -1
 
-print "Final quantum annealing energy: ", \
-      ClassicalIsingEnergy(configurations[0], isingJ)
+print "Final quantum annealing energy: "
+energies = [ ClassicalIsingEnergy(c, isingJ) for c in configurations ]
+print "Lowest: ", np.min(energies)
+print "Highest: ", np.max(energies)
+print "Average: ", np.average(energies)
+print "All: "
+print energies
