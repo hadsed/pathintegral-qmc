@@ -33,13 +33,44 @@ transFieldStart = 1.5
 # Transverse field end
 transFieldEnd = 1e-8
 
+# Random number generator
+rng = np.random.RandomState(1234)
+# rng = np.random.RandomState()
+
+
+#
+# Generate a 2D square Ising model on a torus (with periodic boundaries)
+#
+
 # Number of rows in 2D square Ising model
 nRows = 8
 nSpins = nRows**2
-# Random number generator
-rng = np.random.RandomState(1234)
-# The quantum Ising coupling matrix
-isingJ = np.triu(rng.uniform(low=-2, high=2, size=(nSpins, nSpins)))
+
+# Horizontal nearest-neighbor couplings
+hcons = rng.uniform(low=-2, high=2, size=nSpins)
+hcons[::nRows] = 0.0
+
+# Vertical nearest-neighbor couplings
+vcons = rng.uniform(low=-2, high=2, size=nSpins)
+
+# Horizontal periodic couplings
+phcons = np.zeros(nSpins-2)
+phcons[::nRows] = 1
+phconsIdx = np.where(phcons == 1.0)[0]
+for i in phconsIdx:
+    phcons[i] = rng.uniform(low=-2, high=2)
+# have to pad with zeros because sps.dia_matrix() is too stupid to 
+# take in diagonal arrays that are the proper length for its offset
+phcons = np.insert(phcons, 0, [0,0])
+
+# Vertical periodic couplings
+pvcons = rng.uniform(low=-2, high=2, size=nSpins)
+
+# Construct the sparse diagonal matrix
+isingJ = sps.dia_matrix(([hcons, vcons, phcons, pvcons],
+                         [1, nRows, nRows-1, 2*nRows]),
+                        shape=(nSpins, nSpins))
+
 
 #
 # Pre-annealing stage:
@@ -55,7 +86,7 @@ def bits2spins(vec):
 
 def ClassicalIsingEnergy(spins, J):
     """ Calculate energy for Ising graph @J in configuration @spins. """
-    return -np.dot(spins, np.dot(J, spins))
+    return -np.dot(spins, J.dot(spins))
 
 def ClassicalMetropolisAccept(rng, svec, fidx, J, T):
     """
@@ -137,7 +168,7 @@ def QuantumIsingEnergy(spins, tspins, J, Jperp):
     Returns: the energy as a float
 
     """
-    firstTerm = np.dot(spins, np.dot(J, spins))
+    firstTerm = np.dot(spins, J.dot(spins))
     secondTerm = np.dot(tspins, Jperp.dot(tspins))
     return -tspins.size*(firstTerm+secondTerm)
 
@@ -174,14 +205,14 @@ configurations = [ spinVector.copy() for k in xrange(trotterSlices) ]
 #                    for k in xrange(trotterSlices) ]
 
 # Create 1D Ising matrix corresponding to extra dimension
-# perpJ = np.diag([1.0]*(trotterSlices-1), 1)
-# perpJ[0,-1] = 1.0  # periodic boundary conditions
 perpJ = sps.dia_matrix(([[-trotterSlices*annealingTemperature/2.], 
                          [-trotterSlices*annealingTemperature/2.]], 
                         [1, trotterSlices-1]), 
                        shape=(trotterSlices, trotterSlices))
+
 # Calculate number of steps to decrease transverse field
 transFieldStep = ((transFieldStart-transFieldEnd)/annealingSteps)
+
 # Loop over transverse field annealing schedule
 for field in (transFieldStart - k*transFieldStep 
               for k in xrange(annealingSteps+1)):
