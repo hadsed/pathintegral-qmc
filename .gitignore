@@ -1,7 +1,9 @@
+build/*
 *.pyc
 *.*~
 #*#
 .#*#
+.#*
 *.dat
 *.npy
 *.out
