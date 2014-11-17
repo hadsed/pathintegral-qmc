@@ -10,6 +10,8 @@ Description: Do everything (will break this up later, if needed)
 import numpy as np
 import scipy.sparse as sps
 
+import ising_gen
+
 #
 # Initialize some parameters
 #
@@ -37,41 +39,35 @@ transFieldEnd = 1e-8
 rng = np.random.RandomState(1234)
 # rng = np.random.RandomState()
 
-
-#
-# Generate a 2D square Ising model on a torus (with periodic boundaries)
-#
+# Load Ising instance from file? (if not, write None)
+loadIsing = None #'ising_instances/inst_0.npz'
 
 # Number of rows in 2D square Ising model
-nRows = 8
+nRows = 32
 nSpins = nRows**2
 
-# Horizontal nearest-neighbor couplings
-hcons = rng.uniform(low=-2, high=2, size=nSpins)
-hcons[::nRows] = 0.0
+# Initialize matrix
+isingJ = 0
 
-# Vertical nearest-neighbor couplings
-vcons = rng.uniform(low=-2, high=2, size=nSpins)
+# Construct it, somehow
+if loadIsing is None:
+    # Get a randomly generated problem
+    hcons, vcons, phcons, pvcons = ising_gen.Generate2DIsing(nRows, rng)
+    # Construct the sparse diagonal matrix
+    isingJ = sps.dia_matrix(([hcons, vcons, phcons, pvcons],
+                             [1, nRows, nRows-1, 2*nRows]),
+                            shape=(nSpins, nSpins))
+else:
+    # Read in the diagonals of the 2D Ising instance
+    loader = np.load(loadIsing)
+    nSpins = loader['nSpins'][0]
+    # Reconstruct the matrix in sparse diagonal format
+    isingJ = sps.dia_matrix(([loader['hcons'], loader['vcons'],
+                              loader['phcons'], loader['pvcons']],
+                             loader['k']),
+                            shape=(nSpins, nSpins))
 
-# Horizontal periodic couplings
-phcons = np.zeros(nSpins-2)
-phcons[::nRows] = 1
-phconsIdx = np.where(phcons == 1.0)[0]
-for i in phconsIdx:
-    phcons[i] = rng.uniform(low=-2, high=2)
-# have to pad with zeros because sps.dia_matrix() is too stupid to 
-# take in diagonal arrays that are the proper length for its offset
-phcons = np.insert(phcons, 0, [0,0])
-
-# Vertical periodic couplings
-pvcons = rng.uniform(low=-2, high=2, size=nSpins)
-
-# Construct the sparse diagonal matrix
-isingJ = sps.dia_matrix(([hcons, vcons, phcons, pvcons],
-                         [1, nRows, nRows-1, 2*nRows]),
-                        shape=(nSpins, nSpins))
-
-
+    
 #
 # Pre-annealing stage:
 #
