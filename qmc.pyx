@@ -7,18 +7,16 @@ Description: Do the path-integral quantum annealing.
 
 '''
 
-cimport cython
-from cython.parallel import prange
-
+# cimport cython
+# from cython.parallel import prange
 import numpy as np
 cimport numpy as np
 
-DTYPE = np.float
-ctypedef np.float_t DTYPE_t
 
-def QuantumIsingEnergy(np.ndarray[DTYPE_t, ndim=1] spins, 
-                       np.ndarray[DTYPE_t, ndim=1] tspins, 
-                       J, Jperp):
+def QuantumIsingEnergy(np.ndarray[np.float_t, ndim=1] spins, 
+                       np.ndarray[np.float_t, ndim=1] tspins, 
+                       J, 
+                       Jperp):
     """
     Calculate the energy of the following Ising Hamiltonian with an 
     extra dimension along the Trotter slices:
@@ -43,10 +41,11 @@ def QuantumIsingEnergy(np.ndarray[DTYPE_t, ndim=1] spins,
     return -tspins.size*(firstTerm+secondTerm)
 
 def QuantumMetropolisAccept(rng, 
-                            np.ndarray[DTYPE_t, ndim=1] svec, 
+                            np.ndarray[np.float_t, ndim=1] svec, 
                             int fidx, 
-                            np.ndarray[DTYPE_t, ndim=1]tvec, 
-                            J, Jperp, 
+                            np.ndarray[np.float_t, ndim=1] tvec,
+                            J, 
+                            Jperp, 
                             float T):
     """
     Essentially the same as ClassicalMetropolisAccept(), except that
@@ -74,25 +73,15 @@ def QuantumMetropolisAccept(rng,
     else:
         return False
 
-cdef inline double dot(double[:] v1, 
-                       double[:] v2, 
-                       int length) nogil:
-    cdef double result = 0
-    cdef int i = 0
-    # cdef int length = v1.size
-    cdef double el1 = 0
-    cdef double el2 = 0
-    for i in range(length):
-        el1 = v1[i]
-        el2 = v2[i]
-        result += el1*el2
-    return result
-
-def QuantumAnneal(float transFieldStart, float transFieldStep, 
-    		  int annealingSteps, int trotterSlices, 
-		  float annealingTemperature, int nSpins, perpJ, 
+def QuantumAnneal(float transFieldStart, 
+                  float transFieldStep, 
+    		  int annealingSteps, 
+                  int trotterSlices, 
+		  float annealingTemperature, 
+                  int nSpins, 
+                  perpJ, 
 		  isingJ, 
-                  np.ndarray[DTYPE_t, ndim=2] configurations, 
+                  np.ndarray[np.float_t, ndim=2] configurations, 
                   rng):
     """
     Execute quantum annealing part using path-integral quantum Monte Carlo.
@@ -105,20 +94,6 @@ def QuantumAnneal(float transFieldStart, float transFieldStep,
 
     Returns: None (spins are flipped in-place)
     """
-    cdef int accept = 0
-    cdef int ispin = 0
-    cdef int ifield = 0
-    cdef int islice = 0
-    cdef int slices = trotterSlices
-    cdef float Ej1 = 0
-    cdef double[:,:] conf_view = configurations
-
-    cdef np.ndarray[DTYPE_t, ndim=1] E0 = np.zeros(nSpins)
-    cdef np.ndarray[DTYPE_t, ndim=1] E1 = np.zeros(nSpins)
-    cdef np.ndarray[DTYPE_t, ndim=1] randomUniformSamples
-
-    randomUniformSamples = rng.uniform(0,1, nSpins*annealingSteps*trotterSlices)
-
     # Loop over transverse field annealing schedule
     for ifield, field in enumerate((transFieldStart - k*transFieldStep
                                     for k in xrange(annealingSteps+1))):
@@ -128,42 +103,14 @@ def QuantumAnneal(float transFieldStart, float transFieldStep,
         calculatedPerpJ = perpJCoeff*perpJ
         # Loop over Trotter slices
         for islice in rng.permutation(range(trotterSlices)):
-        # for islice in prange(trotterSlices, nogil=True):
             # Loop over spins
-            # for ispin in rng.permutation(range(nSpins)):
-            print E0
-            for ispin in prange(nSpins, nogil=True):
-                # Grab nearest-neighbor spin vector across Trotter slices
-                # trotterSpins = configurations[ispin, :]
+            for ispin in rng.permutation(range(nSpins)):
                 # Attempt to flip this spin
-                # if QuantumMetropolisAccept(rng, configurations[:, islice], 
-                #                            ispin, 
-                #                            configurations[ispin, :], ###
-                #                            isingJ, 
-                #                            calculatedPerpJ, 
-                #                            annealingTemperature):
-                #     configurations[ispin, islice] *= -1
-
-                # e0 = QuantumIsingEnergy(svec, tvec, J, Jperp)
-                # svec[fidx] *= -1
-                # e1 = QuantumIsingEnergy(svec, tvec, J, Jperp)
-                # svec[fidx] *= -1  # we're dealing with the original array, so flip back
-                E0[ispin] = -1.0*slices
-                E0[ispin] = dot(conf_view[islice], 
-                                conf_view[islice],
-                                nSpins)
-                # E0[ispin] = dot(configurations[islice], 
-                #                 configurations[islice],
-                #                 nSpins)
-                # E0[ispin] = -1.0*slices*(np.dot(configurations[:][islice], 
-                #                              isingJ.dot(configurations[:][islice])) + 
-                #                       np.dot(configurations[ispin], 
-                #                              calculatedPerpJ.dot(configurations[ispin])))
-
-                # if (e0 - e1) > 0.0:  # avoid overflow
-                #     accept = 1
-                # if np.exp((e0 - e1)/T) > randomUniformSamples[ifield+islice+ispin]:
-                #     accept = 1
-                # else:
-                #     accept = 0
-            print E0
+                if QuantumMetropolisAccept(rng, 
+                                           configurations[:, islice], 
+                                           ispin, 
+                                           configurations[ispin, :],
+                                           isingJ, 
+                                           calculatedPerpJ, 
+                                           annealingTemperature):
+                    configurations[ispin, islice] *= -1
