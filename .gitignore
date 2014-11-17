@@ -1,11 +1,12 @@
 ising_instances/*
 ising_instances/
 ising_instances
-
+build/*
 *.pyc
 *.*~
 #*#
 .#*#
+.#*
 *.dat
 *.npy
 *.out
