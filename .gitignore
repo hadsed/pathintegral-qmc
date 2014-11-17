@@ -1,3 +1,7 @@
+ising_instances/*
+ising_instances/
+ising_instances
+
 *.pyc
 *.*~
 #*#
