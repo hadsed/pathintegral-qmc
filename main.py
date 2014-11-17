@@ -10,7 +10,7 @@ Description: Do everything (will break this up later, if needed)
 import numpy as np
 import scipy.sparse as sps
 
-# import pyximport; pyximport.install()
+import pyximport; pyximport.install()
 import sa
 import qmc
 
