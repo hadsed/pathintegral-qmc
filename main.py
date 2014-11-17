@@ -48,7 +48,7 @@ rng = np.random.RandomState(1234)
 #
 
 # Number of rows in 2D square Ising model
-nRows = 40
+nRows = 32
 nSpins = nRows**2
 
 # Horizontal nearest-neighbor couplings
