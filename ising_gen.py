@@ -29,29 +29,54 @@ def Generate2DIsing(nRows, rng):
     # Number of rows in 2D square Ising model
     nSpins = nRows**2
 
-    # Horizontal nearest-neighbor couplings
-    hcons = rng.uniform(low=-2, high=2, size=nSpins)
-    hcons[::nRows] = 0.0
+    # Generate periodic lattice adjacency matrix
+    J = sps.dok_matrix((nSpins,nSpins), dtype=np.float64)
+    
+    for row in xrange(nSpins):
+        # periodic vertical
+        if row < nRows:
+            J[row, row+(nRows*(nRows-1))] = rng.uniform(low=-2, high=2)
+        # loop through columns
+        for col in xrange(row, nSpins):
+            # periodic horizontal
+            if (row % nRows == 0.0):
+                J[row, row+nRows-1] = rng.uniform(low=-2, high=2)
+            # horizontal
+            if (col == row + 1) and (col % nRows != 0.0):
+                J[row, col] = rng.uniform(low=-2, high=2)
+            # vertical
+            if (col == row + nRows):
+                J[row, col] = rng.uniform(low=-2, high=2)
 
-    # Vertical nearest-neighbor couplings
-    vcons = rng.uniform(low=-2, high=2, size=nSpins)
+    return J.todia().data
 
-    # Horizontal periodic couplings
-    phcons = np.zeros(nSpins-(nRows-1))
-    phcons[::nRows] = 1
+    #
+    # This doesn't seem to be working right, but should keep it here to fix
+    # in the future since it's way faster.
+    #
 
-    phconsIdx = np.where(phcons == 1.0)[0]
-    for i in phconsIdx:
-        phcons[i] = rng.uniform(low=-2, high=2)
-    # have to pad with zeros because sps.dia_matrix() is too stupid to 
-    # take in diagonal arrays that are the proper length for its offset
-    phcons = np.insert(phcons, 0, [0]*(nRows-1))
+    # # Horizontal nearest-neighbor couplings
+    # hcons = rng.uniform(low=-2, high=2, size=nSpins)
+    # hcons[::nRows] = 0.0
 
-    # Vertical periodic couplings
-    pvcons = rng.uniform(low=-2, high=2, size=nSpins)
+    # # Vertical nearest-neighbor couplings
+    # vcons = rng.uniform(low=-2, high=2, size=nSpins)
 
-    return hcons, vcons, phcons, pvcons
+    # # Horizontal periodic couplings
+    # phcons = np.zeros(nSpins-(nRows-1))
+    # phcons[::nRows] = 1
 
+    # phconsIdx = np.where(phcons == 1.0)[0]
+    # for i in phconsIdx:
+    #     phcons[i] = rng.uniform(low=-2, high=2)
+    # # have to pad with zeros because sps.dia_matrix() is too stupid to 
+    # # take in diagonal arrays that are the proper length for its offset
+    # phcons = np.insert(phcons, 0, [0]*(nRows-1))
+
+    # # Vertical periodic couplings
+    # pvcons = rng.uniform(low=-2, high=2, size=nSpins)
+
+    # return hcons, vcons, phcons, pvcons
 
 if __name__ == "__main__":
     # How many instances to generate
@@ -81,4 +106,5 @@ if __name__ == "__main__":
 
         data = np.array(hcons_pairs+vcons_pairs+phcons_pairs+pvcons_pairs)
         data = data[np.all(data != 0.0, axis=1)]  # get rid of zero rows
+
         np.savetxt(savedir+'inst_'+str(inst)+'.txt', data, fmt='%1d %1d %.12f ')
