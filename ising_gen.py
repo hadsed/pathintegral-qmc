@@ -78,6 +78,7 @@ def Generate2DIsing(nRows, rng):
 
     # return hcons, vcons, phcons, pvcons
 
+
 if __name__ == "__main__":
     # How many instances to generate
     instances = 100

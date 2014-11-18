@@ -10,15 +10,12 @@ Description: Do the thermal pre-annealing in Cython.
 import numpy as np
 cimport numpy as np
 
-DTYPE = np.float
-ctypedef np.float_t DTYPE_t
 
-def ClassicalIsingEnergy(np.ndarray[DTYPE_t, ndim=1] spins, J):
+def ClassicalIsingEnergy(np.ndarray[np.float_t, ndim=1] spins, J):
     """ Calculate energy for Ising graph @J in configuration @spins. """
     return -np.dot(spins, J.dot(spins))
 
-def ClassicalMetropolisAccept(rng, 
-                              np.ndarray[DTYPE_t, ndim=1] svec, 
+def ClassicalMetropolisAccept(rng, np.ndarray[np.float_t, ndim=1] svec, 
                               int fidx, J, T):
     """
     The Metropolis rule is given by accepting a proposed move s0 -> s1
@@ -48,8 +45,8 @@ def ClassicalMetropolisAccept(rng,
         return False
 
 def Anneal(float preAnnealingTemperature, float annealingTemperature, 
-           float preAnnealingSteps, 
-           np.ndarray[DTYPE_t, ndim=1] spinVector, isingJ, rng):
+           int preAnnealingSteps, 
+           np.ndarray[np.float_t, ndim=1] spinVector, isingJ, rng):
     """
     Execute thermal annealing from @preAnnealingTemperature down to 
     @annealingTemperature with @preAnnealingSteps number of steps. 
