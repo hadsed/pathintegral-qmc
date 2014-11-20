@@ -15,8 +15,7 @@ cimport numpy as np
 
 def QuantumIsingEnergy(np.ndarray[np.float_t, ndim=1] spins, 
                        np.ndarray[np.float_t, ndim=1] tspins, 
-                       J, 
-                       Jperp):
+                       J, Jperp):
     """
     Calculate the energy of the following Ising Hamiltonian with an 
     extra dimension along the Trotter slices:
@@ -40,13 +39,9 @@ def QuantumIsingEnergy(np.ndarray[np.float_t, ndim=1] spins,
     secondTerm = np.dot(tspins, Jperp.dot(tspins))
     return -tspins.size*(firstTerm+secondTerm)
 
-def QuantumMetropolisAccept(rng, 
-                            np.ndarray[np.float_t, ndim=1] svec, 
-                            int fidx, 
-                            np.ndarray[np.float_t, ndim=1] tvec,
-                            J, 
-                            Jperp, 
-                            float T):
+def QuantumMetropolisAccept(rng, np.ndarray[np.float_t, ndim=1] svec, 
+                            int fidx, np.ndarray[np.float_t, ndim=1] tvec,
+                            J, Jperp, float T):
     """
     Essentially the same as ClassicalMetropolisAccept(), except that
     we use a different calculation for the energies.
@@ -73,14 +68,10 @@ def QuantumMetropolisAccept(rng,
     else:
         return False
 
-def QuantumAnneal(float transFieldStart, 
-                  float transFieldStep, 
-    		  int annealingSteps, 
-                  int trotterSlices, 
-		  float annealingTemperature, 
-                  int nSpins, 
-                  perpJ, 
-		  isingJ, 
+def QuantumAnneal(float transFieldStart, float transFieldStep, 
+                  int annealingSteps, int trotterSlices, 
+		  float annealingTemperature, int nSpins, 
+                  perpJ, isingJ, 
                   np.ndarray[np.float_t, ndim=2] configurations, 
                   rng):
     """

@@ -81,9 +81,9 @@ def Generate2DIsing(nRows, rng):
 
 if __name__ == "__main__":
     # How many instances to generate
-    instances = 100
+    instances = 10
     # Number of rows in the 2D square Ising lattice
-    rows = 32
+    rows = 8
     # Directory to save in, if any (MUST have trailing slash!)
     savedir = 'ising_instances/'
 

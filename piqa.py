@@ -29,7 +29,7 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
                              annealingSteps, transFieldStart, transFieldEnd,
                              preAnnealing, preAnnealingSteps, 
                              preAnnealingTemperature, randomSeed, inputfname,
-                             outputfname, verbose):
+                             verbose):
     """
     Simulate quantum annealing using a path-integral quantum Monte Carlo
     scheme. Inputs are described in the help strings for parsing the cmdargs
@@ -61,7 +61,7 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
                                 shape=(nSpins, nSpins))
     else:
         # Read in the diagonals of the 2D Ising instance
-        loader = np.load(loadIsing)
+        loader = np.load(inputfname)
         nSpins = loader['nSpins'][0]
         # Reconstruct the matrix in sparse diagonal format
         isingJ = sps.dia_matrix(([loader['hcons'], loader['vcons'],
@@ -197,11 +197,6 @@ if __name__ == "__main__":
                         nargs='?',
                         type=str,
                         help="Name of the input file for the Ising matrix.")
-    parser.add_argument("--outputfname", 
-                        default='output.dat',
-                        nargs='?',
-                        type=str,
-                        help="Name of the output file.")
     parser.add_argument("--verbose", 
                         default=0,
                         nargs='?',
@@ -221,7 +216,6 @@ if __name__ == "__main__":
     preAnnealingTemperature = args.preannealingtemperature
     randomSeed = args.randomseed
     inputfname = args.inputfname
-    outputfname = args.outputfname
     verbose = args.verbose
 
     # Execute quantum annealing simulation
@@ -230,5 +224,4 @@ if __name__ == "__main__":
                                     annealingSteps, transFieldStart, 
                                     transFieldEnd, preAnnealing, 
                                     preAnnealingSteps, preAnnealingTemperature,
-                                    randomSeed, inputfname, outputfname, 
-                                    verbose=1)
+                                    randomSeed, inputfname, verbose=1)
