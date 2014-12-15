@@ -13,7 +13,7 @@ import argparse
 import numpy as np
 import scipy.sparse as sps
 
-import ising_gen
+import gen_ising
 # C extensions
 import pyximport; pyximport.install()
 import sa
