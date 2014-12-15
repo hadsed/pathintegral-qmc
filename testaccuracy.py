@@ -12,23 +12,23 @@ import pickle
 import numpy as np
 import scipy.sparse as sps
 import piqa
-import sa
 
 # Define some parameters
 nrows = 32
-fieldstart = 1.5
-fieldend = 1e-8
 preannealing = True
-preannealingsteps = 100
+preannealingsteps = 10
 preannealingtemp = 3.0
 seed = None
 annealingtemp = 0.01
 trotterslices = 20
 annealingsteps = 100
+fieldstart = 1.5
+fieldend = 1e-8
+fieldstep = ((fieldstart-fieldend)/annealingsteps)
 # Random number generator
 rng = np.random.RandomState(seed)
 # Test file name
-inputfname = 'ising_instances/inst_0.npz'
+inputfname = 'ising_instances/inst_0'
 
 # Construct the ground state spin configuration from spinglass server results
 groundstate = -np.ones(32*32)
@@ -36,33 +36,50 @@ gsspinups = np.array([2,4,5,6,7,10,11,12,13,14,15,17,19,20,25,26,32,35,36,39,40,
 # flip the spins that shouldn't be up
 groundstate[gsspinups] = 1
 # Read in the diagonals of the 2D Ising instance
-loader = np.load(inputfname)
+loader = np.load(inputfname+'.npz')
 nSpins = loader['nSpins'][0]
-# Reconstruct the matrix in sparse diagonal format
-isingJ = sps.dia_matrix(([loader['hcons'], loader['vcons'],
-                          loader['phcons'], loader['pvcons']],
-                         loader['k']),
-                        shape=(nSpins, nSpins))
 
+# Read from textfile directly to be sure
+loaded = np.loadtxt(inputfname+'.txt')
+isingJ = sps.dok_matrix((nSpins,nSpins))
+for i,j,val in loaded:
+    isingJ[i-1,j-1] = val
+isingJ = isingJ.todia()
 # calculate the actual ground state energy
 gsenergy = np.dot(groundstate, -isingJ.dot(groundstate))
 print "True groundstate energy: ", gsenergy
+print "True energy per spin: ", gsenergy/float(nSpins)
+print "True magnetization: ", np.sum(groundstate)
+print "True magnetization per spin: ", np.sum(groundstate)/float(nSpins)
 
 # calculate ground state energy using SA
 spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nSpins) ], 
                       dtype=np.float)
-print ("Initial SA energy: ", sa.ClassicalIsingEnergy(spinVector, isingJ))
+print ("Initial SA energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
 # Do the pre-annealing
-sa.Anneal(preannealingtemp, annealingtemp,
-          preannealingsteps, spinVector, isingJ, rng)
-print ("Final SA energy: ", sa.ClassicalIsingEnergy(spinVector, isingJ))
+piqa.sa.Anneal(preannealingtemp, annealingtemp,
+               preannealingsteps, spinVector, isingJ, rng)
+print ("Final SA energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
 print str(np.sum(spinVector == groundstate))+'/1024 spins agree'
-
+os.lol
 # Now see what PIQA gives us
-minenergy, minconfig = piqa.SimulateQuantumAnnealing(
-    trotterslices, nrows, annealingtemp, annealingsteps, 
-    fieldstart, fieldend, preannealing, preannealingsteps, 
-    preannealingtemp, seed, inputfname, False
-    )
-print "PIQA reported energy: ", minenergy
-print str(np.sum(minconfig == groundstate))+'/1024 spins agree'
+spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nSpins) ], 
+                      dtype=np.float)
+configurations = np.tile(spinVector, (trotterslices, 1)).T
+perpJ = sps.dia_matrix(([[-trotterslices*annealingtemp/2.], 
+                         [-trotterslices*annealingtemp/2.]], 
+                        [1, trotterslices-1]), 
+                       shape=(trotterslices, trotterslices))
+piqa.sa.Anneal(preannealingtemp, annealingtemp,
+               1, spinVector, isingJ, rng)
+piqa.qmc.QuantumAnneal(fieldstart, fieldstep, annealingsteps, 
+                       trotterslices, annealingtemp, nSpins, 
+                       perpJ, isingJ, configurations, rng)
+minEnergy, minConfiguration = np.inf, []
+for col in configurations.T:
+    candidateEnergy = piqa.sa.ClassicalIsingEnergy(col, isingJ)
+    if candidateEnergy < minEnergy:
+        minEnergy = candidateEnergy
+        minConfiguration = col
+print "PIQA reported energy: ", minEnergy
+print str(np.sum(minConfiguration == groundstate))+'/1024 spins agree'
