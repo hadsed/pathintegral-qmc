@@ -105,3 +105,71 @@ def QuantumAnneal(float transFieldStart, float transFieldStep,
                                            calculatedPerpJ, 
                                            annealingTemperature):
                     configurations[ispin, islice] *= -1
+
+def QuantumMetropolisAccept_opt(rng, np.ndarray[np.float_t, ndim=1] svec, 
+                                np.ndarray[np.float_t, ndim=1] tvec,
+                                int sidx, int tidx,
+                                nb_pairs, jperp, float T):
+    """
+    Optimized version.
+    """
+    # calculate energy difference within Trotter slice
+    ediff = 0.0
+    for spinidx, jval in nb_pairs:
+        ediff += -2.0*svec[sidx]*(jval*svec[spinidx])
+    # now calculate between neighboring slices
+    ediff += -2.0*svec[sidx]*(jperp*tvec[tidx-1])
+    ediff += -2.0*svec[sidx]*(jperp*tvec[tidx+1])
+
+    if ediff > 0.0:  # avoid overflow
+        return True
+    if np.exp(ediff/T) > rng.uniform(0,1):
+        return True
+    else:
+        return False
+
+def QuantumAnneal_opt(float transFieldStart, float transFieldStep, 
+                      int annealingSteps, int trotterSlices, 
+                      float annealingTemperature, int nSpins, 
+                      perpJ, isingJ, 
+                      np.ndarray[np.float_t, ndim=2] configurations, 
+                      rng):
+    """
+    Optimized version.
+    """
+    # Precompute neighbors for each spin
+    nspins = len(configurations[0])
+    nrows = int(np.sqrt(nspins))
+    isingJ = isingJ.todok()  # dictionary of keys type makes this easy
+    neighbors = []
+    # Iterate over all spins
+    for ispin in range(nspins):
+        nb_pairs = []
+        # Find the pairs including this spin
+        for pair in isingJ.iterkeys():
+            if pair[0] == ispin:
+                nb_pairs.append([ pair[1], isingJ[pair] ])
+            elif pair[1] == ispin:
+                nb_pairs.append([ pair[0], isingJ[pair] ])
+        # Record it in the master list
+        neighbors.append(nb_pairs)
+    # Loop over transverse field annealing schedule
+    for ifield, field in enumerate((transFieldStart - k*transFieldStep
+                                    for k in xrange(annealingSteps+1))):
+	# Calculate new coefficient for 1D Ising J
+        perpJ = -0.5*trotterSlices*annealingTemperature*np.log(
+            np.tanh(field / (trotterSlices*annealingTemperature)))
+        # Loop over Trotter slices
+        for islice in rng.permutation(range(trotterSlices)):
+            # Loop over spins
+            for ispin in rng.permutation(range(nSpins)):
+                # Attempt to flip this spin
+                if QuantumMetropolisAccept(rng, 
+                                           configurations[:, islice], 
+                                           configurations[ispin, :],
+                                           ispin, 
+                                           islice,
+                                           neighbors[ispin],
+                                           perpJ,
+                                           annealingTemperature):
+                    configurations[ispin, islice] *= -1
