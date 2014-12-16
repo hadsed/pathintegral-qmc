@@ -19,11 +19,9 @@ def Generate2DIsing(nRows, rng):
     """
     Generate a 2D square Ising model on a torus (with periodic boundaries).
     Couplings are between [-2,2] randomly chosen from a uniform distribution.
-    @nRows is obviously the number of rows in the 2D lattice.
+    @nRows is the number of rows (and columns) in the 2D lattice.
     
-    Returns: 4 arrays corresponding to the horizontal, vertical, periodic 
-             horizontal, and periodic vertical coupling diagonals in the 
-             Ising matrix.
+    Returns: Ising matrix in sparse DOK format
     """
     # Number of rows in 2D square Ising model
     nSpins = nRows**2

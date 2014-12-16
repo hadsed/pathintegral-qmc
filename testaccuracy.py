@@ -55,7 +55,7 @@ import piqa
 # Define some parameters
 nrows = 32
 preannealing = True
-preannealingsteps = 1
+preannealingsteps = 100
 preannealingtemp = 3.0
 seed = None
 annealingtemp = 0.01
@@ -87,78 +87,43 @@ print "True energy per spin: ", gsenergy/float(nSpins)
 print "True magnetization: ", np.sum(groundstate)
 print "True magnetization per spin: ", np.sum(groundstate)/float(nSpins)
 print '\n'
-# calculate ground state energy using SA
-spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nSpins) ], 
-                      dtype=np.float)
-spinVector2 = spinVector.copy()
-print ("Initial state energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
-print '\n'
-
-# optimized SA
-t2 = time.time()
-piqa.sa.Anneal_opt(preannealingtemp, annealingtemp,
-                   preannealingsteps, spinVector2, isingJ, rng)
-t3 = time.time()
-print ("Final SA_opt energy: ", piqa.sa.ClassicalIsingEnergy(spinVector2, isingJ))
-print "SA_opt time: ", str(t3-t2)
-print '\n'
-# non-opt SA
-isingJ = isingJ.todia()
-t0 = time.time()
-piqa.sa.Anneal(preannealingtemp, annealingtemp,
-               preannealingsteps, spinVector, isingJ, rng)
-t1 = time.time()
-print ("Final SA energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
-print str(np.sum(spinVector == groundstate))+'/1024 spins agree'
-print "SA time: ", str(t1-t0)
-print '\n'
 
 
-
-
-# Now see what PIQA gives us
+# calculate ground state energy
 spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nSpins) ], 
                       dtype=np.float)
 configurations = np.tile(spinVector, (trotterslices, 1)).T
-isingJ = isingJ.tocsr()
-perpJ = sps.dia_matrix(([[-trotterslices*annealingtemp/2.], 
-                         [-trotterslices*annealingtemp/2.]], 
-                        [1, trotterslices-1]), 
-                       shape=(trotterslices, trotterslices))
-piqa.sa.Anneal(preannealingtemp, annealingtemp,
-               1, spinVector, isingJ, rng)
-configurations2 = configurations.copy()
+print ("Initial state energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
+print '\n'
 
-# test opt PIQA
+# Generate list of nearest-neighbors for each spin
+neighbors = piqa.GenerateNeighbors(nSpins, isingJ)
+
+# Try just using SA
 t0 = time.time()
+piqa.sa.Anneal(preannealingtemp, annealingtemp,
+               preannealingsteps, spinVector, neighbors, rng)
+t1 = time.time()
+print ("Final SA energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
+print str(np.sum(spinVector == groundstate))+'/1024 spins agree'
+print "SA time (seconds): ", str(t1-t0)
+print '\n'
+
+
+# Now do PIQA
+t0 = time.time()
+piqa.sa.Anneal(preannealingtemp, annealingtemp,
+               1, spinVector, neighbors, rng)  # preannealing
 piqa.qmc.QuantumAnneal(fieldstart, fieldstep, annealingsteps, 
                        trotterslices, annealingtemp, nSpins, 
-                       perpJ, isingJ, configurations, rng)
+                       configurations, neighbors, rng)
 t1 = time.time()
-print "PIQA_opt time: ", str(t1-t0)
+print "PIQA time (seconds): ", str(t1-t0)
 minEnergy, minConfiguration = np.inf, []
 for col in configurations.T:
     candidateEnergy = piqa.sa.ClassicalIsingEnergy(col, isingJ)
     if candidateEnergy < minEnergy:
         minEnergy = candidateEnergy
         minConfiguration = col
-print "PIQA_opt energy: ", minEnergy
+print "PIQA energy: ", minEnergy
 print str(np.sum(minConfiguration == groundstate))+'/1024 spins agree'
-print '\n'
-
-# test normal PIQA
-t0 = time.time()
-piqa.qmc.QuantumAnneal(fieldstart, fieldstep, annealingsteps, 
-                       trotterslices, annealingtemp, nSpins, 
-                       perpJ, isingJ, configurations2, rng)
-t1 = time.time()
-print "PIQA time: ", str(t1-t0)
-minEnergy, minConfiguration = np.inf, []
-for col in configurations2.T:
-    candidateEnergy = piqa.sa.ClassicalIsingEnergy(col, isingJ)
-    if candidateEnergy < minEnergy:
-        minEnergy = candidateEnergy
-        minConfiguration = col
-print "PIQA reported energy: ", minEnergy
-print str(np.sum(minConfiguration == groundstate))+'/1024 spins agree'
-

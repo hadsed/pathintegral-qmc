@@ -24,6 +24,39 @@ def bits2spins(vec):
     """ Convert a bitvector @vec to a spinvector. """
     return [ 1 if k == 1 else -1 for k in vec ]
 
+def GenerateNeighbors(nspins, J):
+    """
+    Precompute a list that include neighboring indices to each spin
+    and the corresponding coupling value. Specifically, build:
+
+    neighbors = [ [ (ni_0, J[0, ni_0]), (ni_1, J[0, ni_1]), ... ],
+                  [ (ni_0, J[1, ni_0]), (ni_1, J[1, ni_1]), ... ],
+                  ...
+                  [ (ni_0, J[nspins-1, ni_0]), ... ] ]
+
+    Inputs:  @npsins   number of spins in the 2D lattice
+             @J        Ising coupling matrix
+
+    Returns: the above specified "neighbors" list as a numpy array.
+    """
+    # Precompute neighbors for each spin
+    nrows = int(np.sqrt(nspins))
+    J = J.todok()  # dictionary of keys type makes this easy
+    neighbors = []
+    # Iterate over all spins
+    for ispin in xrange(nspins):
+        nb_pairs = []
+        # Find the pairs including this spin
+        for pair in J.iterkeys():
+            if pair[0] == ispin:
+                nb_pairs.append([ pair[1], J[pair] ])
+            elif pair[1] == ispin:
+                nb_pairs.append([ pair[0], J[pair] ])
+        # Record it in the master list
+        neighbors.append(nb_pairs)
+    J = J.todia()  # DOK is really slow for multiplication
+    return neighbors
+
 
 def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
                              annealingSteps, transFieldStart, transFieldEnd,
@@ -53,12 +86,8 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
 
     # Construct it, somehow
     if inputfname is None:
-        # Get a randomly generated problem
-        hcons, vcons, phcons, pvcons = ising_gen.Generate2DIsing(nRows, rng)
-        # Construct the sparse diagonal matrix
-        isingJ = sps.dia_matrix(([hcons, vcons, phcons, pvcons],
-                                 [1, nRows, nRows-1, 2*nRows]),
-                                shape=(nSpins, nSpins))
+        # Get a randomly generated problem in sparse diagonal format
+        isingJ = gen_ising.Generate2DIsing(nRows, rng).todia()
     else:
         # Read in the diagonals of the 2D Ising instance
         loader = np.load(inputfname)
@@ -81,13 +110,16 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
     spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nSpins) ], 
                           dtype=np.float)
 
+    # Generate list of nearest-neighbors for each spin
+    neighbors = GenerateNeighbors(nRows**2, isingJ)
+
     if verbose:
         print ("Initial energy: ", sa.ClassicalIsingEnergy(spinVector, isingJ))
 
     # Do the pre-annealing
     if preAnnealing:
         sa.Anneal(preAnnealingTemperature, annealingTemperature,
-                  preAnnealingSteps, spinVector, isingJ, rng)
+                  preAnnealingSteps, spinVector, neighbors, rng)
 
     if verbose:
         print ("Final pre-annealing energy: ", 
@@ -104,19 +136,13 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
     # Rows are spin indices, columns represent Trotter slices
     configurations = np.tile(spinVector, (trotterSlices, 1)).T
 
-    # Create 1D Ising matrix corresponding to extra dimension
-    perpJ = sps.dia_matrix(([[-trotterSlices*annealingTemperature/2.], 
-                             [-trotterSlices*annealingTemperature/2.]], 
-                            [1, trotterSlices-1]), 
-                           shape=(trotterSlices, trotterSlices))
-
     # Calculate number of steps to decrease transverse field
     transFieldStep = ((transFieldStart-transFieldEnd)/annealingSteps)
 
     # Execute quantum annealing part
     qmc.QuantumAnneal(transFieldStart, transFieldStep, annealingSteps, 
-                      trotterSlices, annealingTemperature, nSpins, perpJ, isingJ,
-                      configurations, rng)
+                      trotterSlices, annealingTemperature, nSpins,
+                      configurations, neighbors, rng)
 
     # Get the lowest energy and configuration
     minEnergy, minConfiguration = np.inf, []
@@ -127,7 +153,8 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
             minConfiguration = col
 
     if verbose:
-        energies = [ sa.ClassicalIsingEnergy(c, isingJ) for c in configurations.T ]
+        energies = [ sa.ClassicalIsingEnergy(c, isingJ) 
+                     for c in configurations.T ]
         print "Final quantum annealing energy: "
         print "Lowest: ", np.min(energies)
         print "Highest: ", np.max(energies)
