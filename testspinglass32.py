@@ -55,12 +55,12 @@ import piqa
 # Define some parameters
 nrows = 32
 preannealing = True
-preannealingsteps = 100
+preannealingsteps = 1000
 preannealingtemp = 3.0
 seed = None
 annealingtemp = 0.01
-trotterslices = 20
-annealingsteps = 100
+trotterslices = 30
+annealingsteps = 1000
 fieldstart = 1.5
 fieldend = 1e-8
 fieldstep = ((fieldstart-fieldend)/annealingsteps)

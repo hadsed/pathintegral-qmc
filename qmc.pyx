@@ -37,8 +37,12 @@ def QuantumMetropolisAccept(rng,
     # calculate energy difference within Trotter slice
     ediff = 0.0
     for spinidx, jval in nb_pairs:
-        ediff += -2.0*svec[sidx]*(jval*svec[spinidx])
-    # periodic boundaries?
+        # self-connections are not quadratic
+        if spinidx == sidx:
+            ediff += -2.0*svec[sidx]*jval
+        else:
+            ediff += -2.0*svec[sidx]*(jval*svec[spinidx])
+    # periodic boundaries
     P = tvec.size
     tleft, tright = (0,0)
     if tidx == 0:

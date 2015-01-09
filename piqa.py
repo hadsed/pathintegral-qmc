@@ -24,6 +24,10 @@ def bits2spins(vec):
     """ Convert a bitvector @vec to a spinvector. """
     return [ 1 if k == 1 else -1 for k in vec ]
 
+def spins2bits(vec):
+    """ Convert a spinvector @vec to a bitvector. """
+    return [ 0 if k == 1 else 1 for k in vec ]
+
 def GenerateNeighbors(nspins, J):
     """
     Precompute a list that include neighboring indices to each spin
@@ -58,7 +62,7 @@ def GenerateNeighbors(nspins, J):
     return neighbors
 
 
-def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
+def SimulateQuantumAnnealing(trotterSlices, nSpins, annealingTemperature,
                              annealingSteps, transFieldStart, transFieldEnd,
                              preAnnealing, preAnnealingSteps, 
                              preAnnealingTemperature, randomSeed, inputfname,
@@ -79,15 +83,15 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
     # Random number generator
     seed = 1234 if randomSeed else None
     rng = np.random.RandomState(seed)
-    # Number of spins
-    nSpins = nRows**2
     # Initialize matrix
     isingJ = 0
-
+    # Warn if it's not square
+    if np.sqrt(nSpins) != np.abs(np.sqrt(nSpins)):
+        print("Warning: number of spins indicates non-square lattice.")
     # Construct it, somehow
     if inputfname is None:
         # Get a randomly generated problem in sparse diagonal format
-        isingJ = gen_ising.Generate2DIsing(nRows, rng).todia()
+        isingJ = gen_ising.Generate2DIsing(np.sqrt(nSpins), rng).todia()
     else:
         # Read in the diagonals of the 2D Ising instance
         loader = np.load(inputfname)
@@ -111,7 +115,7 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
                           dtype=np.float)
 
     # Generate list of nearest-neighbors for each spin
-    neighbors = GenerateNeighbors(nRows**2, isingJ)
+    neighbors = GenerateNeighbors(nSpins, isingJ)
 
     if verbose:
         print ("Initial energy: ", sa.ClassicalIsingEnergy(spinVector, isingJ))
@@ -168,11 +172,11 @@ def SimulateQuantumAnnealing(trotterSlices, nRows, annealingTemperature,
 if __name__ == "__main__":
     # Get some command line args
     parser = argparse.ArgumentParser()
-    parser.add_argument("--nrows", 
+    parser.add_argument("--nspins", 
                         default=8,
                         nargs='?',
                         type=int,
-                        help="Number of rows in square 2D Ising lattice.")
+                        help="Number of spins in 2D Ising lattice.")
     parser.add_argument("--trotterslices", 
                         default=20,
                         nargs='?',
@@ -233,7 +237,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # Assign these variables
     trotterSlices = args.trotterslices
-    nRows = args.nrows
+    nSpins = args.nspins
     annealingTemperature = args.temperature
     annealingSteps = args.annealingsteps
     transFieldStart = args.transfieldstart
@@ -246,7 +250,7 @@ if __name__ == "__main__":
     verbose = args.verbose
 
     # Execute quantum annealing simulation
-    e, c = SimulateQuantumAnnealing(trotterSlices, nRows, 
+    e, c = SimulateQuantumAnnealing(trotterSlices, nSpins, 
                                     annealingTemperature,
                                     annealingSteps, transFieldStart, 
                                     transFieldEnd, preAnnealing, 

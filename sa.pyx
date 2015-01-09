@@ -17,7 +17,10 @@ def ClassicalIsingEnergy(spins, J):
     Generally not needed for the annealing process but useful to
     have around at the end of simulations.
     """
-    return -np.dot(spins, J.dot(spins))
+    J = np.asarray(J.todense())
+    d = np.diag(np.diag(J))
+    np.fill_diagonal(J, 0.0)
+    return -np.dot(spins, np.dot(J, spins)) - np.sum(np.dot(d,spins))
 
 def ClassicalMetropolisAccept(rng, np.ndarray[np.float_t, ndim=1] svec, 
                               int fidx, nb_pairs, T):
@@ -38,7 +41,11 @@ def ClassicalMetropolisAccept(rng, np.ndarray[np.float_t, ndim=1] svec,
     # calculate energy difference
     ediff = 0.0
     for spinidx, jval in nb_pairs:
-        ediff += -2.0*svec[fidx]*(jval*svec[spinidx])
+        # self-connections are not quadratic
+        if spinidx == fidx:
+            ediff += -2.0*svec[fidx]*jval
+        else:
+            ediff += -2.0*svec[fidx]*(jval*svec[spinidx])
     # Accept or reject (if it's greater than the random sample, it
     # will always be accepted since it's bounded by [0, 1]).
     if ediff > 0.0:
