@@ -1,6 +1,6 @@
 '''
 
-File: ising_gen.py
+File: gen_ising.py
 Author: Hadayat Seddiqi
 Date: 10.17.14
 Description: Generate instances of the 2D lattice Ising model on 
@@ -46,12 +46,31 @@ def Generate2DIsing(nRows, rng):
 
 
 if __name__ == "__main__":
+    # Get some command line args
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--nrows", 
+                        default=16,
+                        nargs='?',
+                        type=int,
+                        help="Number of rows in square 2D Ising lattice.")
+    parser.add_argument("--instances", 
+                        default=1,
+                        nargs='?',
+                        type=int,
+                        help="Number of instances to generate.")
+    parser.add_argument("--savedir", 
+                        default='ising_instances/',
+                        nargs='?',
+                        type=str,
+                        help="Save in this directory.")
+    # Parse the inputs
+    args = parser.parse_args()
     # How many instances to generate
-    instances = 1
+    instances = args.inst
     # Number of rows in the 2D square Ising lattice
-    rows = 32
-    # Directory to save in, if any (MUST have trailing slash!)
-    savedir = 'ising_instances/'
+    rows = args.rows
+    # Directory to save in, if any
+    savedir = args.savedir + '/'
     # Random number generator
     rng = np.random.RandomState()
     # Generate them

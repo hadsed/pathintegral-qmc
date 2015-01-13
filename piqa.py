@@ -12,6 +12,7 @@ Description: Do path-integral quantum annealing, i.e., run a quantum
 import argparse
 import numpy as np
 import scipy.sparse as sps
+import sys
 
 import gen_ising
 # C extensions
@@ -86,13 +87,13 @@ def SimulateQuantumAnnealing(trotterSlices, nSpins, annealingTemperature,
     # Initialize matrix
     isingJ = 0
     # Warn if it's not square
-    if np.sqrt(nSpins) != np.abs(np.sqrt(nSpins)):
+    if np.sqrt(nSpins) != np.around(np.sqrt(nSpins)):
         print("Warning: number of spins indicates non-square lattice.")
     # Construct it, somehow
-    if inputfname is None:
+    if inputfname is None and np.sqrt(nSpins) == np.around(np.sqrt(nSpins)):
         # Get a randomly generated problem in sparse diagonal format
         isingJ = gen_ising.Generate2DIsing(np.sqrt(nSpins), rng).todia()
-    else:
+    elif inputfname is not None:
         # Read in the diagonals of the 2D Ising instance
         loader = np.load(inputfname)
         nSpins = loader['nSpins'][0]
@@ -101,7 +102,10 @@ def SimulateQuantumAnnealing(trotterSlices, nSpins, annealingTemperature,
                                   loader['phcons'], loader['pvcons']],
                                  loader['k']),
                                 shape=(nSpins, nSpins))
-
+    else:
+        print("You must either specify an input file or a spin number "
+              "that is a perfect square (to generate a random 2D model).")
+        sys.exit()
     #
     # Pre-annealing stage:
     #
@@ -173,7 +177,7 @@ if __name__ == "__main__":
     # Get some command line args
     parser = argparse.ArgumentParser()
     parser.add_argument("--nspins", 
-                        default=8,
+                        default=16,
                         nargs='?',
                         type=int,
                         help="Number of spins in 2D Ising lattice.")
