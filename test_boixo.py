@@ -1,6 +1,6 @@
 '''
 
-File: testboixo.py
+File: test_boixo.py
 Author: Hadayat Seddiqi
 Date: 01.06.15
 Description: Test the accuracy of PIQA code by running the
@@ -15,17 +15,17 @@ import piqa
 
 # Define some parameters
 nspins = 8
-preannealing = True
 preannealingsteps = 2
+preannealingmcsteps = 1
 preannealingtemp = 1.0
-seed = None
 annealingtemp = 0.01
-trotterslices = 10
 annealingsteps = 10
+annealingmcsteps = 1
+trotterslices = 5
 fieldstart = 0.5
 fieldend = 1e-8
-fieldstep = ((fieldstart-fieldend)/annealingsteps)
 # Random number generator
+seed = None
 rng = np.random.RandomState(seed)
 # Test file name
 inputfname = 'ising_instances/boixo.txt'
@@ -43,7 +43,7 @@ for i,j,val in loaded:
     isingJ[i-1,j-1] = val
 
 # Print out energies we're supposed to see from QMC sims
-print("All possible states:")
+print("All possible states and their energies:")
 results = []
 def bitstr2spins(vec):
     """ Take a bitstring and return a spinvector. """
@@ -61,40 +61,44 @@ for res in sorted(results):
 spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nspins) ], 
                       dtype=np.float)
 spinVector_original = spinVector.copy()
+configurations = np.tile(spinVector, (trotterslices, 1)).T
 # Generate list of nearest-neighbors for each spin
-neighbors = piqa.GenerateNeighbors(nspins, isingJ)
+neighbors = piqa.GenerateNeighbors(nspins, isingJ, 4)
+# Generate annealing schedules
+tannealingsched = np.linspace(preannealingtemp,
+                              annealingtemp,
+                              annealingsteps)
+annealingsched = np.linspace(fieldstart,
+                             fieldend,
+                             annealingsteps)
 # Try using SA (deterministic start)
 print ("SA results using same starting state:")
 print ("Starting state: ",
        piqa.sa.ClassicalIsingEnergy(spinVector, isingJ),
        getbitstr(spinVector))
-for saitr in range(trotterslices):
+for sa_itr in range(trotterslices):
     spinVector = spinVector_original.copy()
-    piqa.sa.Anneal(preannealingtemp, annealingtemp,
-                   preannealingsteps, spinVector, neighbors, rng)
+    piqa.sa.Anneal(tannealingsched, preannealingmcsteps, 
+                   spinVector, neighbors, rng)
     print(piqa.sa.ClassicalIsingEnergy(spinVector, isingJ), 
           getbitstr(spinVector))
 # Try using SA (random start)
 print ("SA results using random state (start and end):")
-for saitr in range(trotterslices):
+for sa_itr in range(trotterslices):
     spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nspins) ], 
                           dtype=np.float)
     starten, startstate = (piqa.sa.ClassicalIsingEnergy(spinVector, isingJ), 
                            getbitstr(spinVector))
-    piqa.sa.Anneal(preannealingtemp, annealingtemp,
-                   preannealingsteps, spinVector, neighbors, rng)
+    piqa.sa.Anneal(tannealingsched, preannealingmcsteps, 
+                   spinVector, neighbors, rng)
     print(starten, startstate, 
           piqa.sa.ClassicalIsingEnergy(spinVector, isingJ), 
           getbitstr(spinVector))
+
 # Now do PIQA
 print ("QA results:")
-spinVector = spinVector_original
 print("PIQA starting state: ", getbitstr(spinVector))
-# piqa.sa.Anneal(preannealingtemp, annealingtemp,
-#                1, spinVector, neighbors, rng)  # preannealing
-# print("PIQA state after preannealing: ", getbitstr(spinVector))
-configurations = np.tile(spinVector, (trotterslices, 1)).T
-piqa.qmc.QuantumAnneal(fieldstart, fieldstep, annealingsteps, 
+piqa.qmc.QuantumAnneal(annealingsched, annealingmcsteps, 
                        trotterslices, annealingtemp, nspins, 
                        configurations, neighbors, rng)
 minEnergy, minConfiguration = np.inf, []

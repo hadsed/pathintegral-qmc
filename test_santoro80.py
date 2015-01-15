@@ -12,28 +12,27 @@ Description: Test the accuracy of PIQA code by comparing with
 '''
 
 import time
-import pickle
 import numpy as np
 import scipy.sparse as sps
 import piqa
 
 # Define some parameters
 nrows = 80
-preannealing = True
+nspins = nrows**2
 preannealingsteps = 10
+preannealingmcsteps = 1
 preannealingtemp = 3.0
-seed = None
 annealingtemp = 0.01
-trotterslices = 30
-annealingsteps = 10
+annealingsteps = 100
+annealingmcsteps = 1
 fieldstart = 1.5
 fieldend = 1e-8
-fieldstep = ((fieldstart-fieldend)/annealingsteps)
+trotterslices = 20
+seed = None
 # Random number generator
 rng = np.random.RandomState(seed)
 # Test file name
 inputfname = 'ising_instances/santoro_80x80.txt'
-
 # Construct the ground state spin configuration from spinglass server results
 groundstate = -np.ones(nrows**2)
 gsspinups = np.array(
@@ -257,51 +256,57 @@ gsspinups = np.array(
      6348,6349,6350,6352,6354,6356,6358,6359,6360,6363,6364,6365,6368,6369,
      6375,6377,6379,6380,6383,6386,6387,6389,6390,6395,6396,6397]
 )-1
-
 # flip the spins that shouldn't be down
 groundstate[gsspinups] = 1
-nSpins = nrows**2
 # Read from textfile directly to be sure
 loaded = np.loadtxt(inputfname)
-isingJ = sps.dok_matrix((nSpins,nSpins))
+isingJ = sps.dok_matrix((nspins,nspins))
 for i,j,val in loaded:
     isingJ[i-1,j-1] = val
 # calculate the actual ground state energy
 gsenergy = np.dot(groundstate, -isingJ.dot(groundstate))
 print "True groundstate energy: ", gsenergy
-print "True energy per spin: ", gsenergy/float(nSpins)
+print "True energy per spin: ", gsenergy/float(nspins)
 print "True magnetization: ", np.sum(groundstate)
-print "True magnetization per spin: ", np.sum(groundstate)/float(nSpins)
+print "True magnetization per spin: ", np.sum(groundstate)/float(nspins)
 print '\n'
-
-
-# calculate ground state energy
-spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nSpins) ], 
+# Get list of nearest-neighbors for each spin
+# neighbors = piqa.GenerateNeighbors(
+#     nspins, 
+#     isingJ, 
+#     4,
+#     'ising_instances/santoro_80x80_neighbors.npy'
+#     )
+neighbors = np.load('ising_instances/santoro_80x80_neighbors.npy')
+# initialize the states
+spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nspins) ], 
                       dtype=np.float)
 configurations = np.tile(spinVector, (trotterslices, 1)).T
 print ("Initial state energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
 print '\n'
-
-# Generate list of nearest-neighbors for each spin
-neighbors = piqa.GenerateNeighbors(nSpins, isingJ)
-
 # Try just using SA
+tannealingsched = np.linspace(preannealingtemp,
+                              annealingtemp,
+                              annealingsteps)
 t0 = time.time()
-piqa.sa.Anneal(preannealingtemp, annealingtemp,
-               preannealingsteps, spinVector, neighbors, rng)
+piqa.sa.Anneal(tannealingsched, annealingmcsteps, spinVector, neighbors, rng)
 t1 = time.time()
 print ("Final SA energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
 print str(np.sum(spinVector == groundstate))+'/'+str(nspins)+' spins agree'
 print "SA time (seconds): ", str(t1-t0)
 print '\n'
 
-
 # Now do PIQA
+preannealingsched = np.linspace(preannealingtemp, 
+                                annealingtemp, 
+                                100)
+annealingsched = np.linspace(fieldstart,
+                             fieldend,
+                             annealingsteps)
 t0 = time.time()
-piqa.sa.Anneal(preannealingtemp, annealingtemp,
-               1, spinVector, neighbors, rng)  # preannealing
-piqa.qmc.QuantumAnneal(fieldstart, fieldstep, annealingsteps, 
-                       trotterslices, annealingtemp, nSpins, 
+piqa.sa.Anneal(preannealingsched, 1, spinVector, neighbors, rng)  # preannealing
+piqa.qmc.QuantumAnneal(annealingsched, annealingmcsteps,
+                       trotterslices, annealingtemp, nspins, 
                        configurations, neighbors, rng)
 t1 = time.time()
 print "PIQA time (seconds): ", str(t1-t0)

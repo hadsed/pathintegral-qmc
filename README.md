@@ -4,16 +4,13 @@ A path-integral quantum Monte Carlo code for simulating quantum annealing with a
 ## Requirements
 This simulation package is written in Cython and requires scipy and numpy. Right now there isn't a good setup available and I just use pyximport for development.
 
-## Quickstart
-The fastest way to get started with this code is to run ```python piqa.py```, which will run a quick problem with some default options. To tweak the options, type ```python piqa.py --help``` to see what you can do.
-
 ## Usage
-A better way to use the software is to create your own script and call the relevant functions after importing. There are a few examples given, but ```testspinglass32.py``` is probably the clearest, although the fastest one will be ```testboixo.py``` since it's only 8 qubits (it also shows how you can nicely print out the state configurations). The basic required elements of your script are as follows:
+The way to use this code is to create your own script and call the relevant functions after importing. There are a few examples given, with ```test_spinglass32.py``` probably being the clearest, although the fastest one will be ```test_boixo.py``` since it's only 8 qubits (it also shows how you can nicely print out the state configurations). You can also look at ```profiler.py```, which is a barebones script that just looks to profile the simulated annealing and quantum annealing routines for comparison with cProfile. The basic required elements of your script are as follows:
 
 - initialize all the relevant parameters
 - specify the Ising matrix (you will want to do this in sparse DOK format for maximum efficiency). you can do this by:
   - reading an input file
-  - generating a random square 2D model using ```gen_ising.py```
+  - generating a random square 2D model using ```tools.Generate2DIsingInstance```
 - create the neighbors data structure, which allows efficient evaluation of the Ising energy (it requires casting the Ising matrix to DOK form but will return in DIA form)
 - initialize the state
   - start with a random spin vector for a single Ising model

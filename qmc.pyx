@@ -1,23 +1,32 @@
+# encoding: utf-8
+# cython: profile=True
+# filename: qmc.pyx
 '''
 
 File: qmc.py
 Author: Hadayat Seddiqi
 Date: 10.13.14
 Description: Do the path-integral quantum annealing.
+             See: 10.1103/PhysRevB.66.094203
 
 '''
 
-# cimport cython
+cimport cython
 # from cython.parallel import prange
 import numpy as np
 cimport numpy as np
 
-
+# @cython.profile(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def QuantumMetropolisAccept(rng,
                             np.ndarray[np.float_t, ndim=1] svec, 
                             np.ndarray[np.float_t, ndim=1] tvec,
-                            int sidx, int tidx,
-                            nb_pairs, jperp, float T):
+                            int sidx, 
+                            int tidx,
+                            np.ndarray[np.float_t, ndim=2] nb_pairs, 
+                            float jperp, 
+                            float T):
     """
     Determine whether to accept a spin flip or not. 
 
@@ -34,23 +43,35 @@ def QuantumMetropolisAccept(rng,
     Returns: True  if move is accepted
              False if rejected
     """
-    # calculate energy difference within Trotter slice
-    ediff = 0.0
-    for spinidx, jval in nb_pairs:
+    # define with cdefs to speed things up
+    cdef float ediff = 0.0
+    cdef int si = 0
+    cdef int spinidx = 0
+    cdef float jval = 0.0
+    cdef int P = tvec.size
+    cdef int tleft = 0
+    cdef int tright = 0
+    # loop through the neighbors
+    for si in range(len(nb_pairs)):
+        # get the neighbor spin index
+        spinidx = nb_pairs[si][0]
+        # get the coupling value to that neighbor
+        jval = nb_pairs[si][1]
         # self-connections are not quadratic
         if spinidx == sidx:
             ediff += -2.0*svec[sidx]*jval
         else:
-            ediff += -2.0*svec[sidx]*(jval*svec[spinidx])
+            ediff += -2.0*svec[sidx]*(jval*svec[int(spinidx)])
     # periodic boundaries
-    P = tvec.size
-    tleft, tright = (0,0)
     if tidx == 0:
-        tleft, tright = (P-1, 1)
+        tleft = P-1
+        tright = 1
     elif tidx == P-1:
-        tleft, tright = (P-2, 0)
+        tleft = P-2
+        tright = 0
     else:
-        tleft, tright = (tidx-1, tidx+1)
+        tleft = tidx-1
+        tright = tidx+1
     # now calculate between neighboring slices
     ediff += -2.0*svec[sidx]*(jperp*tvec[tleft])
     ediff += -2.0*svec[sidx]*(jperp*tvec[tright])
@@ -62,11 +83,17 @@ def QuantumMetropolisAccept(rng,
     else:
         return False
 
-def QuantumAnneal(float transFieldStart, float transFieldStep, 
-                  int annealingSteps, int trotterSlices, 
-                  float annealingTemperature, int nSpins, 
+# @cython.profile(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def QuantumAnneal(np.ndarray[np.float_t, ndim=1] annealingSchedule,
+                  int mcSteps,
+                  int trotterSlices, 
+                  float annealingTemperature, 
+                  int nSpins, 
                   np.ndarray[np.float_t, ndim=2] configurations, 
-                  neighbors, rng):
+                  np.ndarray[np.float_t, ndim=3] neighbors, 
+                  rng):
     """
     Execute quantum annealing part using path-integral quantum Monte Carlo.
     The Hamiltonian is:
@@ -87,22 +114,23 @@ def QuantumAnneal(float transFieldStart, float transFieldStep,
     Returns: None (spins are flipped in-place)
     """
     # Loop over transverse field annealing schedule
-    for ifield, field in enumerate((transFieldStart - k*transFieldStep
-                                    for k in xrange(annealingSteps+1))):
+    for field in annealingSchedule:
 	# Calculate new coefficient for 1D Ising J
         perpJ = -0.5*trotterSlices*annealingTemperature*np.log(
-            np.tanh(field / (trotterSlices*annealingTemperature)))
-        # Loop over Trotter slices
-        for islice in rng.permutation(range(trotterSlices)):
-            # Loop over spins
-            for ispin in rng.permutation(range(nSpins)):
-                # Attempt to flip this spin
-                if QuantumMetropolisAccept(rng, 
-                                           configurations[:, islice], 
-                                           configurations[ispin, :],
-                                           ispin, 
-                                           islice,
-                                           neighbors[ispin],
-                                           perpJ,
-                                           annealingTemperature):
-                    configurations[ispin, islice] *= -1
+            np.tanh(field / (trotterSlices*annealingTemperature))
+            )
+        for step in xrange(mcSteps):
+            # Loop over Trotter slices
+            for islice in rng.permutation(range(trotterSlices)):
+                # Loop over spins
+                for ispin in rng.permutation(range(nSpins)):
+                    # Attempt to flip this spin
+                    if QuantumMetropolisAccept(rng, 
+                                               configurations[:, islice], 
+                                               configurations[ispin, :],
+                                               ispin, 
+                                               islice,
+                                               neighbors[ispin],
+                                               perpJ,
+                                               annealingTemperature):
+                        configurations[ispin, islice] *= -1
