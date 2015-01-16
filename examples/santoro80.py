@@ -1,9 +1,9 @@
 '''
 
-File:
+File: santoro80.py
 Author: Hadayat Seddiqi
 Date: 01.11.15
-Description: Test the accuracy of PIQA code by comparing with 
+Description: Test the performance of PIQA code by comparing with 
              a presolved Ising instance from M. Juenger's spin
              glass server used by the original 2002 paper by
              Santoro et al. The result is given in the file
@@ -14,7 +14,10 @@ Description: Test the accuracy of PIQA code by comparing with
 import time
 import numpy as np
 import scipy.sparse as sps
-import piqa
+
+import piqmc.sa as sa
+import piqmc.qmc as qmc
+import piqmc.tools as tools
 
 # Define some parameters
 nrows = 80
@@ -271,7 +274,7 @@ print "True magnetization: ", np.sum(groundstate)
 print "True magnetization per spin: ", np.sum(groundstate)/float(nspins)
 print '\n'
 # Get list of nearest-neighbors for each spin
-# neighbors = piqa.GenerateNeighbors(
+# neighbors = GenerateNeighbors(
 #     nspins, 
 #     isingJ, 
 #     4,
@@ -282,16 +285,16 @@ neighbors = np.load('ising_instances/santoro_80x80_neighbors.npy')
 spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nspins) ], 
                       dtype=np.float)
 configurations = np.tile(spinVector, (trotterslices, 1)).T
-print ("Initial state energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
+print ("Initial state energy: ", sa.ClassicalIsingEnergy(spinVector, isingJ))
 print '\n'
 # Try just using SA
 tannealingsched = np.linspace(preannealingtemp,
                               annealingtemp,
                               annealingsteps)
 t0 = time.time()
-piqa.sa.Anneal(tannealingsched, annealingmcsteps, spinVector, neighbors, rng)
+sa.Anneal(tannealingsched, annealingmcsteps, spinVector, neighbors, rng)
 t1 = time.time()
-print ("Final SA energy: ", piqa.sa.ClassicalIsingEnergy(spinVector, isingJ))
+print ("Final SA energy: ", sa.ClassicalIsingEnergy(spinVector, isingJ))
 print str(np.sum(spinVector == groundstate))+'/'+str(nspins)+' spins agree'
 print "SA time (seconds): ", str(t1-t0)
 print '\n'
@@ -304,15 +307,15 @@ annealingsched = np.linspace(fieldstart,
                              fieldend,
                              annealingsteps)
 t0 = time.time()
-piqa.sa.Anneal(preannealingsched, 1, spinVector, neighbors, rng)  # preannealing
-piqa.qmc.QuantumAnneal(annealingsched, annealingmcsteps,
+sa.Anneal(preannealingsched, 1, spinVector, neighbors, rng)  # preannealing
+qmc.QuantumAnneal(annealingsched, annealingmcsteps,
                        trotterslices, annealingtemp, nspins, 
                        configurations, neighbors, rng)
 t1 = time.time()
 print "PIQA time (seconds): ", str(t1-t0)
 minEnergy, minConfiguration = np.inf, []
 for col in configurations.T:
-    candidateEnergy = piqa.sa.ClassicalIsingEnergy(col, isingJ)
+    candidateEnergy = sa.ClassicalIsingEnergy(col, isingJ)
     if candidateEnergy < minEnergy:
         minEnergy = candidateEnergy
         minConfiguration = col

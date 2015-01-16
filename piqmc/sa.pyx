@@ -1,5 +1,5 @@
 # encoding: utf-8
-# cython: profile=True
+# cython: profile=False
 # filename: sa.pyx
 '''
 
@@ -14,7 +14,7 @@ import numpy as np
 cimport numpy as np
 cimport cython
 
-# @cython.profile(True)
+@cython.embedsignature(True)
 def ClassicalIsingEnergy(spins, J):
     """
     Calculate energy for Ising graph @J in configuration @spins.
@@ -26,9 +26,9 @@ def ClassicalIsingEnergy(spins, J):
     np.fill_diagonal(J, 0.0)
     return -np.dot(spins, np.dot(J, spins)) - np.sum(np.dot(d,spins))
 
-# @cython.profile(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
+@cython.embedsignature(True)
 def ClassicalMetropolisAccept(rng, 
                               np.ndarray[np.float_t, ndim=1] svec, 
                               int sidx, 
@@ -73,9 +73,9 @@ def ClassicalMetropolisAccept(rng,
     else:
         return False
 
-# @cython.profile(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
+@cython.embedsignature(True)
 def Anneal(np.ndarray[np.float_t, ndim=1] annealingSchedule, 
            int mcSteps, 
            np.ndarray[np.float_t, ndim=1] spinVector, 

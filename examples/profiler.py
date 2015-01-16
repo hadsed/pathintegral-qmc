@@ -11,10 +11,13 @@ Description: Profile the simulated and quantum annealing routines.
 '''
 
 import pstats, cProfile
-import pyximport; pyximport.install()
 import scipy.sparse as sps
 import numpy as np
-import piqa
+
+import piqmc.sa as sa
+import piqmc.qmc as qmc
+import piqmc.tools as tools
+
 
 # Define some parameters
 nrows = 80
@@ -40,7 +43,7 @@ for i,j,val in loaded:
     isingJ[i-1,j-1] = val
 
 # Get list of nearest-neighbors for each spin
-neighbors = piqa.GenerateNeighbors(
+neighbors = tools.GenerateNeighbors(
     nspins, 
     isingJ, 
     4,
@@ -56,7 +59,7 @@ configurations = np.tile(spinVector, (trotterslices, 1)).T
 tannealingsched = np.linspace(preannealingtemp,
                               annealingtemp,
                               annealingsteps)
-cProfile.runctx("piqa.sa.Anneal(tannealingsched, annealingmcsteps, "
+cProfile.runctx("sa.Anneal(tannealingsched, annealingmcsteps, "
                 "spinVector, neighbors, rng)",
                 globals(), locals(), "sa.prof")
 s = pstats.Stats("sa.prof")
@@ -65,7 +68,7 @@ s.strip_dirs().sort_stats("time").print_stats()
 annealingsched = np.linspace(fieldstart,
                              fieldend,
                              annealingsteps)
-cProfile.runctx("piqa.qmc.QuantumAnneal(annealingsched, annealingmcsteps,"
+cProfile.runctx("qmc.QuantumAnneal(annealingsched, annealingmcsteps,"
                 "trotterslices, annealingtemp, nspins, "
                 "configurations, neighbors, rng)",
                 globals(), locals(), "qmc.prof")

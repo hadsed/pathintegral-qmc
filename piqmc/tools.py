@@ -11,12 +11,10 @@ Description: A few helpful functions for doing simulated
 import numpy as np
 import scipy.sparse as sps
 
-import gen_ising
-
 
 def bits2spins(vec):
     """ Convert a bitvector @vec to a spinvector. """
-    return [ 1 if k == 1 else -1 for k in vec ]
+    return [ -1 if k == 1 else 1 for k in vec ]
 
 def spins2bits(vec):
     """ Convert a spinvector @vec to a bitvector. """
@@ -27,14 +25,37 @@ def GenerateNeighbors(nspins, J, maxnb, savepath=None):
     Precompute a list that include neighboring indices to each spin
     and the corresponding coupling value. Specifically, build:
 
-    neighbors = [ [ (ni_0, J[0, ni_0]), (ni_1, J[0, ni_1]), ... ],
-                  [ (ni_0, J[1, ni_0]), (ni_1, J[1, ni_1]), ... ],
-                  ...
-                  [ (ni_0, J[nspins-1, ni_0]), ... ] ]
+    neighbors = [
+           [ [ ni_0, J[0, ni_0] ], 
+             [ ni_1, J[0, ni_1] ], 
+               ... ],
+
+           [ [ ni_0, J[1, ni_0] ], 
+             [ ni_1, J[1, ni_1] ], 
+               ... ],
+
+            ...
+
+           [ [ ni_0, J[nspins-1, ni_0]], 
+             [ ni_1, J[nspins-1, ni_1]],                   
+               ... ]
+     ]
+
+    For graphs that are not completely "regular", there will be
+    some rows in the neighbor matrix for each spin that will show
+    [0,0]. This is required to keep the neighbors data structure
+    an N-dimensional array, but in the energy calculations will have
+    no contribution as the coupling strength is essentially zero.
+    On the other hand, this is why @maxnb must be set to as high a
+    number as necessary, but no more (otherwise it will incur some
+    computational cost).
 
     Inputs:  @npsins   number of spins in the 2D lattice
              @J        Ising coupling matrix
              @maxnb    the maximum number of neighbors for any spin
+                       (if self-connections representing local field
+                       terms are present along the diagonal of @J, 
+                       this counts as a "neighbor" as well)
 
     Returns: the above specified "neighbors" list as a numpy array.
     """

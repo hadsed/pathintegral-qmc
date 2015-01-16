@@ -9,6 +9,8 @@ build/*
 *.npy
 *.out
 
+*.egg-info
+
 # Compiled source #
 ###################
 *.com

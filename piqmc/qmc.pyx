@@ -1,5 +1,5 @@
 # encoding: utf-8
-# cython: profile=True
+# cython: profile=False
 # filename: qmc.pyx
 '''
 
@@ -16,9 +16,10 @@ cimport cython
 import numpy as np
 cimport numpy as np
 
-# @cython.profile(True)
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
+@cython.embedsignature(True)
 def QuantumMetropolisAccept(rng,
                             np.ndarray[np.float_t, ndim=1] svec, 
                             np.ndarray[np.float_t, ndim=1] tvec,
@@ -83,9 +84,9 @@ def QuantumMetropolisAccept(rng,
     else:
         return False
 
-# @cython.profile(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
+@cython.embedsignature(True)
 def QuantumAnneal(np.ndarray[np.float_t, ndim=1] annealingSchedule,
                   int mcSteps,
                   int trotterSlices, 
