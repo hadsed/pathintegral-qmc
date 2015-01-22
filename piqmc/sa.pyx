@@ -3,7 +3,7 @@
 # filename: sa.pyx
 '''
 
-File: sa.py
+File: sa.pyx
 Author: Hadayat Seddiqi
 Date: 10.13.14
 Description: Do the thermal pre-annealing in Cython.
@@ -13,6 +13,13 @@ Description: Do the thermal pre-annealing in Cython.
 import numpy as np
 cimport numpy as np
 cimport cython
+cimport openmp
+from cython.parallel import prange
+from libc.math cimport exp as cexp
+from libc.stdlib cimport rand as crand
+from libc.stdlib cimport RAND_MAX as RAND_MAX
+# from libc.stdio cimport printf as cprintf
+
 
 @cython.embedsignature(True)
 def ClassicalIsingEnergy(spins, J):
@@ -29,57 +36,10 @@ def ClassicalIsingEnergy(spins, J):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.embedsignature(True)
-def ClassicalMetropolisAccept(rng, 
-                              np.ndarray[np.float_t, ndim=1] svec, 
-                              int sidx, 
-                              np.ndarray[np.float_t, ndim=2] nb_pairs, 
-                              float T):
-    """
-    The Metropolis rule is given by accepting a proposed move s0 -> s1
-    with an acceptance probability of:
-    
-    P(s0, s1) = min{1, exp[E(s0) - E(s1)]} .
-
-    Input: @svec      spin vector
-           @sidx      spin move to be accepted or rejected
-           @nb_pairs  2D array of neighbor index-coupling value pairs
-           @T         ambient temperature
-
-    Returns: True  if move is accepted
-             False if rejected
-    """
-    # define with cdefs to speed things up
-    cdef float ediff = 0.0
-    cdef int si = 0
-    cdef int spinidx = 0
-    cdef float jval = 0.0
-    # loop through the neighbors
-    for si in range(len(nb_pairs)):
-        # get the neighbor spin index
-        spinidx = nb_pairs[si][0]
-        # get the coupling value to that neighbor
-        jval = nb_pairs[si][1]
-        # self-connections are not quadratic
-        if spinidx == sidx:
-            ediff += -2.0*svec[sidx]*jval
-        else:
-            ediff += -2.0*svec[sidx]*(jval*svec[int(spinidx)])
-    # Accept or reject (if it's greater than the random sample, it
-    # will always be accepted since it's bounded by [0, 1]).
-    if ediff > 0.0:  # avoid overflow
-        return True
-    if np.exp(ediff/T) > rng.uniform(0,1):
-        return True
-    else:
-        return False
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.embedsignature(True)
-def Anneal(np.ndarray[np.float_t, ndim=1] annealingSchedule, 
-           int mcSteps, 
-           np.ndarray[np.float_t, ndim=1] spinVector, 
-           np.ndarray[np.float_t, ndim=3] neighbors, 
+def Anneal(np.ndarray[np.float_t, ndim=1] sched, 
+           int mcsteps, 
+           np.ndarray[np.float_t, ndim=1] svec, 
+           np.ndarray[np.float_t, ndim=3] nbs, 
            rng):
     """
     Execute thermal annealing according to @annealingSchedule, an
@@ -92,15 +52,117 @@ def Anneal(np.ndarray[np.float_t, ndim=1] annealingSchedule,
 
     Returns: None (spins are flipped in-place)
     """
-    # Number of spins
-    nSpins = spinVector.size
+    # Define some variables
+    cdef int nspins = svec.size
+    cdef int maxnb = nbs[0].shape[0]
+    cdef int itemp = 0
+    cdef float temp = 0.0
+    cdef int step = 0
+    cdef int sidx = 0
+    cdef int si = 0
+    cdef int spinidx = 0
+    cdef float jval = 0.0
+    cdef float ediff = 0.0
+    cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
+        rng.permutation(range(nspins))
+
     # Loop over temperatures
-    for temp in annealingSchedule:
+    for itemp in xrange(sched.size):
+        # Get temperature
+        temp = sched[itemp]
         # Do some number of Monte Carlo steps
-        for step in xrange(mcSteps):
+        for step in xrange(mcsteps):
             # Loop over spins
-            for idx in rng.permutation(range(nSpins)):
-                # Attempt to flip this spin
-                if ClassicalMetropolisAccept(rng, spinVector, idx, 
-                                             neighbors[idx], temp):
-                    spinVector[idx] *= -1
+            for sidx in sidx_shuff:
+                # loop through the given spin's neighbors
+                for si in xrange(maxnb):
+                    # get the neighbor spin index
+                    spinidx = int(nbs[sidx,si,0])
+                    # get the coupling value to that neighbor
+                    jval = nbs[sidx,si,1]
+                    # self-connections are not quadratic
+                    if spinidx == sidx:
+                        ediff += -2.0*svec[sidx]*jval
+                    # calculate the energy diff of flipping this spin
+                    else:
+                        ediff += -2.0*svec[sidx]*(jval*svec[spinidx])
+                # Metropolis accept or reject
+                if ediff > 0.0:  # avoid overflow
+                    svec[sidx] *= -1
+                elif cexp(ediff/temp) > crand()/float(RAND_MAX):
+                    svec[sidx] *= -1
+                # Reset energy diff value
+                ediff = 0.0
+            sidx_shuff = rng.permutation(sidx_shuff)
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.embedsignature(True)
+def Anneal_parallel(np.ndarray[np.float_t, ndim=1] sched, 
+                    int mcsteps, 
+                    np.ndarray[np.float_t, ndim=1] svec, 
+                    np.ndarray[np.float_t, ndim=3] nbs, 
+                    int nthreads):
+    """
+    Execute thermal annealing according to @annealingSchedule, an
+    array of temperatures, which takes @mcSteps number of Monte Carlo
+    steps per timestep.
+
+    Starting configuration is given by @spinVector, which we update 
+    and calculate energies using the Ising graph @isingJ.
+
+    This version attempts to do thread parallelization with Cython's
+    built-in OpenMP directive "prange". The extra argument @nthreads
+    specifies how many workers to split the spin updates amongst.
+
+    Note that while the sequential version randomizes the order of
+    spin updates, this version does not.
+
+    Returns: None (spins are flipped in-place)
+    """
+    # Define some variables
+    cdef int nspins = svec.size
+    cdef int maxnb = nbs[0].shape[0]
+    cdef int itemp = 0
+    cdef float temp = 0.0
+    cdef int sidx = 0
+    cdef int si = 0
+    cdef int spinidx = 0
+    cdef float jval = 0.0
+    cdef np.ndarray[np.float_t, ndim=1] svec_p = svec  # not a copy
+    cdef np.ndarray[np.float_t, ndim=1] ediffs = np.zeros(nspins)
+    cdef np.ndarray[np.float_t, ndim=1] nbs_flat = nbs.reshape(
+        (nbs.shape[0]*nbs.shape[1]*nbs.shape[2],)
+    )  # also not a copy
+
+    # Loop over temperatures
+    for itemp in xrange(sched.size):
+        # Get temperature
+        temp = sched[itemp]
+        # Do some number of Monte Carlo steps
+        for step in xrange(mcsteps):
+            # Loop over spins
+            # print nthreads, openmp.omp_get_num_threads()
+            for sidx in prange(nspins, nogil=True, 
+                               schedule='guided', 
+                               num_threads=nthreads):
+                # loop through the neighbors
+                for si in range(maxnb):
+                    # get the neighbor spin index
+                    spinidx = int(nbs_flat[2*sidx*maxnb+2*si])
+                    # get the coupling value to that neighbor
+                    jval = nbs_flat[2*sidx*maxnb+2*si+1]
+                    # self-connections are not quadratic
+                    if spinidx == sidx:
+                        ediffs[sidx] += -2.0*svec_p[sidx]*jval
+                    else:
+                        ediffs[sidx] += -2.0*svec_p[sidx]*(
+                            jval*svec_p[spinidx]
+                        )
+                # Accept or reject
+                if ediffs[sidx] > 0.0:  # avoid overflow
+                    svec_p[sidx] *= -1
+                elif cexp(ediffs[sidx]/temp) > crand()/float(RAND_MAX):
+                    svec_p[sidx] *= -1
+            # reset
+            ediffs.fill(0.0)

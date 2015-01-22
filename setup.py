@@ -5,12 +5,12 @@ from Cython.Distutils import build_ext
 
 extensions = [
     Extension(
-        "piqmc.sa", ["piqmc/sa.c"],
-        # extra_compile_args=['-fopenmp'],
-        # extra_link_args=['-fopenmp']
+        "piqmc.sa", ["piqmc/sa.pyx"],
+        extra_compile_args=['-fopenmp'],
+        extra_link_args=['-fopenmp']
         ),
     Extension(
-        "piqmc.qmc", ["piqmc/qmc.c"],
+        "piqmc.qmc", ["piqmc/qmc.pyx"],
         # extra_compile_args=['-fopenmp'],
         # extra_link_args=['-fopenmp']
         )
