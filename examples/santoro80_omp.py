@@ -26,11 +26,11 @@ preannealingsteps = 10
 preannealingmcsteps = 1
 preannealingtemp = 3.0
 annealingtemp = 0.01
-annealingsteps = 1000
+annealingsteps = 100
 annealingmcsteps = 1
 fieldstart = 1.5
 fieldend = 1e-8
-trotterslices = 20
+trotterslices = 10
 seed = 1234
 # Random number generator
 rng = np.random.RandomState(seed)
@@ -278,12 +278,17 @@ neighbors = np.load('ising_instances/santoro_80x80_neighbors.npy')
 tannealingsched = np.linspace(preannealingtemp,
                               annealingtemp,
                               annealingsteps)
+annealingsched = np.linspace(fieldstart,
+                             fieldend,
+                             annealingsteps)
 spinVector = np.array([ 2*rng.randint(2)-1 for k in range(nspins) ], 
                       dtype=np.float)
 spinVector2 = spinVector.copy()
-# configurations = np.tile(spinVector, (trotterslices, 1)).T
+configurations = np.tile(spinVector, (trotterslices, 1)).T
 
 print ("")
+print ("Thermal Annealing")
+print ("="*20)
 print ("Parallel version:")
 print ("Initial state energy: ", 
        sa.ClassicalIsingEnergy(spinVector, isingJ))
@@ -300,8 +305,7 @@ for i in range(1,5):
            sa.ClassicalIsingEnergy(spinVector, isingJ) - gsenergy)
     print ("Time: ", t1-t0)
     print ("")
-
-
+spinVector = spinVector2.copy()
 print ("\nSequential version:")
 print ("Initial state energy: ", 
        sa.ClassicalIsingEnergy(spinVector2, isingJ))
@@ -313,4 +317,45 @@ print ("Final energy: ",
        sa.ClassicalIsingEnergy(spinVector2, isingJ))
 print ("Residual: ", 
        sa.ClassicalIsingEnergy(spinVector2, isingJ) - gsenergy)
+print ("Time: ", t1-t0)
+
+
+print ("")
+print ("Quantum Annealing")
+print ("="*20)
+print ("Parallel version:")
+print ("Initial state energy: ", 
+       sa.ClassicalIsingEnergy(spinVector, isingJ))
+for i in range(1,5):
+    print ("Cores: ", i)
+    t0 = time.time()
+    qmc.QuantumAnneal_parallel(annealingsched, annealingmcsteps,
+                               trotterslices, annealingtemp, nspins, 
+                               configurations, neighbors, i)
+    t1 = time.time()
+    print ("Final energies: ", 
+           np.average([ sa.ClassicalIsingEnergy(col, isingJ) 
+                        for col in configurations.T ]))
+    print ("Residuals: ", 
+           np.average([ sa.ClassicalIsingEnergy(col, isingJ) - gsenergy 
+                        for col in configurations.T ]))
+    print ("Time: ", t1-t0)
+    print ("")
+    configurations = np.tile(spinVector, (trotterslices, 1)).T
+
+print ("\nSequential version:")
+print ("Initial state energy: ", 
+       sa.ClassicalIsingEnergy(spinVector, isingJ))
+configurations = np.tile(spinVector, (trotterslices, 1)).T
+t0 = time.time()
+qmc.QuantumAnneal(annealingsched, annealingmcsteps,
+                  trotterslices, annealingtemp, nspins, 
+                  configurations, neighbors, rng)
+t1 = time.time()
+print ("Final energies: ", 
+       np.average([ sa.ClassicalIsingEnergy(col, isingJ) 
+                    for col in configurations.T ]))
+print ("Residuals: ", 
+       np.average([ sa.ClassicalIsingEnergy(col, isingJ) - gsenergy 
+                    for col in configurations.T ]))
 print ("Time: ", t1-t0)
