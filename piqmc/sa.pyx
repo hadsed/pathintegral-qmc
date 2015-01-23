@@ -6,7 +6,7 @@
 File: sa.pyx
 Author: Hadayat Seddiqi
 Date: 10.13.14
-Description: Do the thermal pre-annealing in Cython.
+Description: Do thermal annealing on a (sparse) Ising system.
 
 '''
 
@@ -36,11 +36,11 @@ def ClassicalIsingEnergy(spins, J):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.embedsignature(True)
-def Anneal(np.ndarray[np.float_t, ndim=1] sched, 
-           int mcsteps, 
-           np.ndarray[np.float_t, ndim=1] svec, 
-           np.ndarray[np.float_t, ndim=3] nbs, 
-           rng):
+cpdef Anneal(np.float_t[:] sched, 
+             int mcsteps, 
+             np.float_t[:] svec, 
+             np.float_t[:, :, :] nbs, 
+             rng):
     """
     Execute thermal annealing according to @annealingSchedule, an
     array of temperatures, which takes @mcSteps number of Monte Carlo
@@ -98,11 +98,11 @@ def Anneal(np.ndarray[np.float_t, ndim=1] sched,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.embedsignature(True)
-def Anneal_parallel(np.ndarray[np.float_t, ndim=1] sched, 
-                    int mcsteps, 
-                    np.ndarray[np.float_t, ndim=1] svec, 
-                    np.ndarray[np.float_t, ndim=3] nbs, 
-                    int nthreads):
+cpdef Anneal_parallel(np.float_t[:] sched, 
+                      int mcsteps, 
+                      np.float_t[:] svec, 
+                      np.float_t[:, :, :] nbs, 
+                      int nthreads):
     """
     Execute thermal annealing according to @annealingSchedule, an
     array of temperatures, which takes @mcSteps number of Monte Carlo
@@ -129,11 +129,7 @@ def Anneal_parallel(np.ndarray[np.float_t, ndim=1] sched,
     cdef int si = 0
     cdef int spinidx = 0
     cdef float jval = 0.0
-    cdef np.ndarray[np.float_t, ndim=1] svec_p = svec  # not a copy
     cdef np.ndarray[np.float_t, ndim=1] ediffs = np.zeros(nspins)
-    cdef np.ndarray[np.float_t, ndim=1] nbs_flat = nbs.reshape(
-        (nbs.shape[0]*nbs.shape[1]*nbs.shape[2],)
-    )  # also not a copy
 
     # Loop over temperatures
     for itemp in xrange(sched.size):
@@ -147,22 +143,20 @@ def Anneal_parallel(np.ndarray[np.float_t, ndim=1] sched,
                                schedule='guided', 
                                num_threads=nthreads):
                 # loop through the neighbors
-                for si in range(maxnb):
+                for si in xrange(maxnb):
                     # get the neighbor spin index
-                    spinidx = int(nbs_flat[2*sidx*maxnb+2*si])
+                    spinidx = int(nbs[sidx, si, 0])
                     # get the coupling value to that neighbor
-                    jval = nbs_flat[2*sidx*maxnb+2*si+1]
+                    jval = nbs[sidx, si, 1]
                     # self-connections are not quadratic
                     if spinidx == sidx:
-                        ediffs[sidx] += -2.0*svec_p[sidx]*jval
+                        ediffs[sidx] += -2.0*svec[sidx]*jval
                     else:
-                        ediffs[sidx] += -2.0*svec_p[sidx]*(
-                            jval*svec_p[spinidx]
-                        )
+                        ediffs[sidx] += -2.0*svec[sidx]*(jval*svec[spinidx])
                 # Accept or reject
                 if ediffs[sidx] > 0.0:  # avoid overflow
-                    svec_p[sidx] *= -1
+                    svec[sidx] *= -1
                 elif cexp(ediffs[sidx]/temp) > crand()/float(RAND_MAX):
-                    svec_p[sidx] *= -1
+                    svec[sidx] *= -1
             # reset
             ediffs.fill(0.0)

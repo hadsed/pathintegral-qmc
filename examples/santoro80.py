@@ -309,8 +309,8 @@ annealingsched = np.linspace(fieldstart,
 t0 = time.time()
 sa.Anneal(preannealingsched, 1, spinVector, neighbors, rng)  # preannealing
 qmc.QuantumAnneal(annealingsched, annealingmcsteps,
-                       trotterslices, annealingtemp, nspins, 
-                       configurations, neighbors, rng)
+                  trotterslices, annealingtemp, nspins, 
+                  configurations, neighbors, rng)
 t1 = time.time()
 print "PIQA time (seconds): ", str(t1-t0)
 minEnergy, minConfiguration = np.inf, []
