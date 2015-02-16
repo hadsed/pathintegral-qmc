@@ -1,3 +1,6 @@
+# encoding: utf-8
+# cython: profile=False
+# filename: tools.pyx
 '''
 
 File: tools.py
@@ -9,6 +12,8 @@ Description: A few helpful functions for doing simulated
 '''
 
 import numpy as np
+cimport numpy as np
+cimport cython
 import scipy.sparse as sps
 
 
@@ -20,7 +25,10 @@ def spins2bits(vec):
     """ Convert a spinvector @vec to a bitvector. """
     return [ 0 if k == 1 else 1 for k in vec ]
 
-def GenerateNeighbors(nspins, J, maxnb, savepath=None):
+cpdef GenerateNeighbors(int nspins, 
+                        J,  # scipy.sparse matrix
+                        int maxnb, 
+                        str savepath=None):
     """
     Precompute a list that include neighboring indices to each spin
     and the corresponding coupling value. Specifically, build:
@@ -59,28 +67,30 @@ def GenerateNeighbors(nspins, J, maxnb, savepath=None):
 
     Returns: the above specified "neighbors" list as a numpy array.
     """
-    # Precompute neighbors for each spin
-    nrows = int(np.sqrt(nspins))
-    J = J.todok()  # dictionary of keys type makes this easy
-    neighbors = []
+    # predefining vars
+    cdef int ispin = 0
+    cdef int ipair = 0
+    # the neighbors data structure
+    cdef np.float_t[:, :, :]  nbs = np.zeros((nspins, maxnb, 2))
+    # dictionary of keys type makes this easy
+    J = J.todok()
     # Iterate over all spins
     for ispin in xrange(nspins):
-        nb_pairs = np.zeros((maxnb, 2))
         ipair = 0
         # Find the pairs including this spin
         for pair in J.iterkeys():
             if pair[0] == ispin:
-                nb_pairs[ipair] = [ pair[1], J[pair] ]
+                nbs[ispin, ipair, 0] = pair[1]
+                nbs[ispin, ipair, 1] = J[pair]
                 ipair += 1
             elif pair[1] == ispin:
-                nb_pairs[ipair] = [ pair[0], J[pair] ]
+                nbs[ispin, ipair, 0] = pair[0]
+                nbs[ispin, ipair, 1] = J[pair]
                 ipair += 1
-        # Record it in the master list
-        neighbors.append(nb_pairs)
-    J = J.todia()  # DOK is really slow for multiplication
+    J = J.tocsr()  # DOK is really slow for multiplication
     if savepath is not None:
-        np.save(savepath, np.array(neighbors))
-    return np.array(neighbors)
+        np.save(savepath, nbs)
+    return nbs
 
 def Generate2DIsingInstance(nRows, rng):
     """

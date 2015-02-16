@@ -13,6 +13,9 @@ extensions = [
         "piqmc.qmc", ["piqmc/qmc.pyx"],
         extra_compile_args=['-fopenmp'],
         extra_link_args=['-fopenmp']
+        ),
+    Extension(
+        "piqmc.tools", ["piqmc/tools.pyx"]
         )
     ]
 
