@@ -12,7 +12,6 @@ Description: Do the path-integral quantum annealing.
 '''
 
 cimport cython
-# from cython.parallel import prange
 import numpy as np
 cimport numpy as np
 cimport openmp
