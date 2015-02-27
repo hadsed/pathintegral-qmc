@@ -61,12 +61,12 @@ preannealingsteps = 10
 preannealingmcsteps = 1
 preannealingtemp = 3.0
 annealingtemp = 0.01
-annealingsteps = 1
+annealingsteps = 100
 annealingmcsteps = 1
 fieldstart = 1.5
 fieldend = 1e-8
 trotterslices = 20
-seed = None
+seed = 1234
 # Random number generator
 rng = np.random.RandomState(seed)
 # Test file name
@@ -90,10 +90,12 @@ print "True magnetization: ", np.sum(groundstate)
 print "True magnetization per spin: ", np.sum(groundstate)/float(nspins)
 print '\n'
 
-# calculate ground state energy
-svec = np.array([ np.array([ 2*rng.randint(2)-1 for k in range(nspins) ], 
+# make a bunch of random binary (non-spin!!) starting states
+msvec = np.array([ np.array([ rng.randint(2) for k in range(nspins) ], 
                            dtype=np.float)
                   for row in xrange(64) ])
+# get the spin version
+svec = 2*msvec - 1
 print ("Initial state energy: ", 
        sorted([ sa.ClassicalIsingEnergy(v, isingJ) for v in svec ]))
 print '\n'
@@ -101,10 +103,11 @@ print '\n'
 # Generate list of nearest-neighbors for each spin
 neighbors = tools.GenerateNeighbors(nspins, isingJ, 4)
 
-# Try just using SA
+# SA annealing schedule
 tannealingsched = np.linspace(preannealingtemp,
                               annealingtemp,
                               annealingsteps)
+# Normal annealing routine
 t0 = time.time()
 for vec in svec:
     sa.Anneal(tannealingsched, annealingmcsteps, vec, neighbors, rng)
@@ -114,16 +117,12 @@ print ("Final SA energy: ",
 print "SA time (seconds): ", str(t1-t0)
 print '\n'
 
-# Now try SA with multispin encoding
-# make a bunch of random binary (non-spin!!) starting states
-svec = np.array([ np.array([ rng.randint(2) for k in range(nspins) ], 
-                           dtype=np.float)
-                  for row in xrange(64) ])
+# Now try multispin encoding
 t0 = time.time()
-sa.Anneal_multispin(tannealingsched, annealingmcsteps, svec, neighbors, rng)
+sa.Anneal_multispin(tannealingsched, annealingmcsteps, msvec, neighbors, rng)
 t1 = time.time()
 print ("Final SA-multispin energies: ", 
-       sorted([ sa.ClassicalIsingEnergy(tools.bits2spins(v), isingJ) for v in svec ]))
+       sorted([ sa.ClassicalIsingEnergy(tools.bits2spins(v), isingJ) for v in msvec ]))
 print "SA-multispin time (seconds): ", str(t1-t0)
 print '\n'
 

@@ -164,6 +164,16 @@ cpdef Anneal_parallel(np.float_t[:] sched,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.embedsignature(True)
+cdef inline bint getbit(np.uint64_t s, int k):
+    """
+    Get the @k-th bit of @s.
+    """
+    return (s >> k) & 1
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.embedsignature(True)
 def Anneal_multispin(np.float_t[:] sched, 
                      int mcsteps, 
                      np.float_t[:, :] svec_mat, 
@@ -194,25 +204,21 @@ def Anneal_multispin(np.float_t[:] sched,
     cdef float jval = 0.0
     cdef int k = 0
     cdef np.uint64_t flipmask = 0
-    cdef str state = '1'*64
-    cdef str signstr = '1'*64
     cdef np.ndarray[np.uint64_t, ndim=1] svec = np.zeros(nspins, dtype=np.uint64)
-    cdef np.ndarray[np.int64_t, ndim=1] spinstate = np.zeros(64, dtype=np.int64)
-    cdef np.ndarray[np.int64_t, ndim=1] sign = np.zeros(64, dtype=np.int64)
+    cdef np.ndarray[np.int8_t, ndim=1] sign = np.zeros(64, dtype=np.int8)
+    cdef np.ndarray[np.int64_t, ndim=1] spinstate = np.zeros(64, dtype=np.int64) ###
     cdef np.ndarray[np.float_t, ndim=1] ediffs = np.zeros(64)
     cdef np.ndarray[np.float_t, ndim=1] rands = rng.rand(64)
     cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
         rng.permutation(range(nspins))
     # encode @svec_mat into the bits of svec elements
     for si in xrange(svec_mat.shape[1]):
-        state = ''
         for k in xrange(svec_mat.shape[0]):
-            state += str(int(svec_mat[k,si]))
-        svec[si] = int(state, 2)
-    # svec = np.asarray([ int(reduce(lambda x,y:x+y, 
-    #                                [ str(int(k)) for k in svec_mat[:,col] ]), 2)
-    #                     for col in xrange(svec_mat.shape[1]) ],
-    #                   dtype=np.uint64)
+            # shift left to make room
+            svec[si] = svec[si] << 1
+            # set bit if we want to
+            if svec_mat[k,si]:
+                svec[si] = svec[si] ^ 0x01
     # Loop over temperatures
     for itemp in xrange(sched.size):
         # Get temperature
@@ -221,10 +227,6 @@ def Anneal_multispin(np.float_t[:] sched,
         for step in xrange(mcsteps):
             # Loop over spins
             for sidx in sidx_shuff:
-                state = bin(svec[sidx])[2:].rjust(64, '0')
-                for k in xrange(len(state)):
-                    spinstate[k] = 2*int(state[k]) - 1
-                # spinstate = np.asarray([ 2*int(state[k])-1 for k in xrange(len(state)) ], dtype=np.int64)
                 # loop through the given spin's neighbors
                 for si in xrange(maxnb):
                     # get the neighbor spin index
@@ -233,24 +235,35 @@ def Anneal_multispin(np.float_t[:] sched,
                     jval = nbs[sidx,si,1]
                     # self-connections are not quadratic
                     if spinidx == sidx:
-                        ediffs += -2.0*jval*spinstate
-                    # calculate the energy diff of flipping this spin
+                        # loop over bits
+                        for k in xrange(64):
+                            # zero maps to one, one maps to negative 1
+                            if not getbit(svec[sidx], 63 - k):
+                                ediffs[k] -= 2.0*jval
+                            else:
+                                ediffs[k] += 2.0*jval
+                    # quadratic part
                     else:
-                        # what is the sign of z_i * z_j ? (0 -> + and 1 -> -)
-                        # do the not-XOR
-                        signstr = bin(~(svec[sidx] ^ svec[spinidx]))[2:].rjust(64, '0')
-                        for k in xrange(len(signstr)):
-                            sign[k] = 2*int(signstr[k]) - 1
-                        # sign = np.asarray([ 2*int(signstr[k])-1 for k in xrange(len(signstr)) ],
-                        #                   dtype=np.int64)
-                        ediffs += -2.0*jval*sign
+                        # do the XOR to see bit disagreements
+                        flipmask = svec[sidx] ^ svec[spinidx]
+                        # loop over bits
+                        for k in xrange(64):
+                            # zero maps to one, one maps to negative 1
+                            if not getbit(flipmask, 63 - k):
+                                ediffs[k] -= 2.0*jval
+                            else:
+                                ediffs[k] += 2.0*jval
                 # prepare to flip those whose Boltzmann weights are larger than random samples
-                sign = np.asarray(np.exp(ediffs/temp) > rands, dtype=np.int64)
-                signstr = ''
-                for k in xrange(sign.size):
-                    signstr += str(sign[k])
-                flipmask = int(signstr, 2)
-                # flipmask = int(reduce(lambda x,y: str(x)+str(y), sign), 2)
+                sign = np.asarray(np.exp(ediffs/temp) > rands, dtype=np.int8)
+                # set a one and shift left
+                flipmask = 1 if sign[0] else 0
+                # go through all except the first
+                for k in xrange(1, 64):
+                    # shift last value left to make room
+                    flipmask = flipmask << 1
+                    # if we want to flip, set a one
+                    if sign[k]:
+                        flipmask ^= 0x01
                 # do the flip
                 svec[sidx] ^= flipmask
                 # reset energy differences
