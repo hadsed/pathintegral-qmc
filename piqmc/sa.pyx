@@ -20,9 +20,6 @@ from libc.stdlib cimport rand as crand
 from libc.stdlib cimport RAND_MAX as RAND_MAX
 # from libc.stdio cimport printf as cprintf
 
-import pycuda.autoinit
-import pycuda.driver as cuda
-
 
 @cython.embedsignature(True)
 def ClassicalIsingEnergy(spins, J):
@@ -207,10 +204,15 @@ def Anneal_multispin(np.float_t[:] sched,
     cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
         rng.permutation(range(nspins))
     # encode @svec_mat into the bits of svec elements
-    svec = np.asarray([ int(reduce(lambda x,y:x+y, 
-                                   [ str(int(k)) for k in svec_mat[:,col] ]), 2)
-                        for col in xrange(svec_mat.shape[1]) ],
-                      dtype=np.uint64)
+    for si in xrange(svec_mat.shape[1]):
+        state = ''
+        for k in xrange(svec_mat.shape[0]):
+            state += str(int(svec_mat[k,si]))
+        svec[si] = int(state, 2)
+    # svec = np.asarray([ int(reduce(lambda x,y:x+y, 
+    #                                [ str(int(k)) for k in svec_mat[:,col] ]), 2)
+    #                     for col in xrange(svec_mat.shape[1]) ],
+    #                   dtype=np.uint64)
     # Loop over temperatures
     for itemp in xrange(sched.size):
         # Get temperature
@@ -220,7 +222,9 @@ def Anneal_multispin(np.float_t[:] sched,
             # Loop over spins
             for sidx in sidx_shuff:
                 state = bin(svec[sidx])[2:].rjust(64, '0')
-                spinstate = np.asarray([ 2*int(state[k])-1 for k in xrange(len(state)) ], dtype=np.int64)
+                for k in xrange(len(state)):
+                    spinstate[k] = 2*int(state[k]) - 1
+                # spinstate = np.asarray([ 2*int(state[k])-1 for k in xrange(len(state)) ], dtype=np.int64)
                 # loop through the given spin's neighbors
                 for si in xrange(maxnb):
                     # get the neighbor spin index
@@ -234,13 +238,19 @@ def Anneal_multispin(np.float_t[:] sched,
                     else:
                         # what is the sign of z_i * z_j ? (0 -> + and 1 -> -)
                         # do the not-XOR
-                        signstr = bin((svec[sidx] ^ svec[spinidx]))[2:].rjust(64, '0')
-                        sign = np.asarray([ 2*int(signstr[k])-1 for k in xrange(len(signstr)) ],
-                                          dtype=np.int64)
+                        signstr = bin(~(svec[sidx] ^ svec[spinidx]))[2:].rjust(64, '0')
+                        for k in xrange(len(signstr)):
+                            sign[k] = 2*int(signstr[k]) - 1
+                        # sign = np.asarray([ 2*int(signstr[k])-1 for k in xrange(len(signstr)) ],
+                        #                   dtype=np.int64)
                         ediffs += -2.0*jval*sign
                 # prepare to flip those whose Boltzmann weights are larger than random samples
                 sign = np.asarray(np.exp(ediffs/temp) > rands, dtype=np.int64)
-                flipmask = int(reduce(lambda x,y: str(x)+str(y), sign), 2)
+                signstr = ''
+                for k in xrange(sign.size):
+                    signstr += str(sign[k])
+                flipmask = int(signstr, 2)
+                # flipmask = int(reduce(lambda x,y: str(x)+str(y), sign), 2)
                 # do the flip
                 svec[sidx] ^= flipmask
                 # reset energy differences
