@@ -87,7 +87,7 @@ cpdef Anneal(np.float_t[:] sched,
                     else:
                         ediff += -2.0*svec[sidx]*(jval*svec[spinidx])
                 # Metropolis accept or reject
-                if ediff > 0.0:  # avoid overflow
+                if ediff >= 0.0:  # avoid overflow
                     svec[sidx] *= -1
                 elif cexp(ediff/temp) > crand()/float(RAND_MAX):
                     svec[sidx] *= -1
@@ -160,3 +160,120 @@ cpdef Anneal_parallel(np.float_t[:] sched,
                     svec[sidx] *= -1
             # reset
             ediffs.fill(0.0)
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.embedsignature(True)
+cdef inline bint getbit(np.uint64_t s, int k):
+    """
+    Get the @k-th bit of @s.
+    """
+    return (s >> k) & 1
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.embedsignature(True)
+def Anneal_multispin(np.float_t[:] sched, 
+                     int mcsteps, 
+                     np.float_t[:, :] svec_mat, 
+                     np.float_t[:, :, :] nbs, 
+                     rng):
+    """
+    Execute thermal annealing according to @sched, an array of temperatures, 
+    which takes @mcsteps number of Monte Carlo steps per timestep.
+
+    This is a multispin encoding version, where we encode many parallel
+    simulation states in the bits of some integers. Namely, we start with
+    @svec_mat which has 32 or 64 rows denoting individual start states.
+    We update and calculate energies using the neighbors datastructure @nbs,
+    which encodes information from the problem's Ising graph. @rng is the 
+    random number generator.
+
+    Returns: None (spins are flipped in-place)
+    """
+    # Define some variables
+    cdef int nspins = svec_mat.shape[1]
+    cdef int maxnb = nbs[0].shape[0]
+    cdef int itemp = 0
+    cdef float temp = 0.0
+    cdef int step = 0
+    cdef int sidx = 0
+    cdef int si = 0
+    cdef int spinidx = 0
+    cdef float jval = 0.0
+    cdef int k = 0
+    cdef np.uint64_t flipmask = 0
+    cdef np.ndarray[np.uint64_t, ndim=1] svec = np.zeros(nspins, dtype=np.uint64)
+    cdef np.ndarray[np.int8_t, ndim=1] sign = np.zeros(64, dtype=np.int8)
+    cdef np.ndarray[np.int64_t, ndim=1] spinstate = np.zeros(64, dtype=np.int64) ###
+    cdef np.ndarray[np.float_t, ndim=1] ediffs = np.zeros(64)
+    cdef np.ndarray[np.float_t, ndim=1] rands = rng.rand(64)
+    cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
+        rng.permutation(range(nspins))
+    # encode @svec_mat into the bits of svec elements
+    for si in xrange(svec_mat.shape[1]):
+        for k in xrange(svec_mat.shape[0]):
+            # shift left to make room
+            svec[si] = svec[si] << 1
+            # set bit if we want to
+            if svec_mat[k,si]:
+                svec[si] = svec[si] ^ 0x01
+    # Loop over temperatures
+    for itemp in xrange(sched.size):
+        # Get temperature
+        temp = sched[itemp]
+        # Do some number of Monte Carlo steps
+        for step in xrange(mcsteps):
+            # Loop over spins
+            for sidx in sidx_shuff:
+                # loop through the given spin's neighbors
+                for si in xrange(maxnb):
+                    # get the neighbor spin index
+                    spinidx = int(nbs[sidx,si,0])
+                    # get the coupling value to that neighbor
+                    jval = nbs[sidx,si,1]
+                    # self-connections are not quadratic
+                    if spinidx == sidx:
+                        # loop over bits
+                        for k in xrange(64):
+                            # zero maps to one, one maps to negative 1
+                            if not getbit(svec[sidx], 63 - k):
+                                ediffs[k] -= 2.0*jval
+                            else:
+                                ediffs[k] += 2.0*jval
+                    # quadratic part
+                    else:
+                        # do the XOR to see bit disagreements
+                        flipmask = svec[sidx] ^ svec[spinidx]
+                        # loop over bits
+                        for k in xrange(64):
+                            # zero maps to one, one maps to negative 1
+                            if not getbit(flipmask, 63 - k):
+                                ediffs[k] -= 2.0*jval
+                            else:
+                                ediffs[k] += 2.0*jval
+                # prepare to flip those whose Boltzmann weights are larger than random samples
+                sign = np.asarray(np.exp(ediffs/temp) > rands, dtype=np.int8)
+                # set a one and shift left
+                flipmask = 1 if sign[0] else 0
+                # go through all except the first
+                for k in xrange(1, 64):
+                    # shift last value left to make room
+                    flipmask = flipmask << 1
+                    # if we want to flip, set a one
+                    if sign[k]:
+                        flipmask ^= 0x01
+                # do the flip
+                svec[sidx] ^= flipmask
+                # reset energy differences
+                ediffs.fill(0.0)
+                # new random numbers
+                rands = rng.rand(64)
+            # reshuffle update order
+            sidx_shuff = rng.permutation(sidx_shuff)
+    # unpack and return
+    for sidx in xrange(svec.size+1):
+        state = bin(svec[sidx])[2:].rjust(64,'0')
+        for k in xrange(len(state)):
+            svec_mat[k,sidx] = float(state[k])
