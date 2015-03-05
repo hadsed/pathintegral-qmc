@@ -2,7 +2,7 @@
 
 File: boixo16.py
 Author: Hadayat Seddiqi
-Date: 01.06.15
+Date: 03.05.15
 Description: Run the 16-qubit double bipartite graph 
              problem from Boixo et al (2015).
 
