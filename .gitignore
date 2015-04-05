@@ -8,6 +8,7 @@ build/*
 *.dat
 *.npy
 *.out
+*.html
 
 *.egg-info
 

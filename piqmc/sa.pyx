@@ -14,7 +14,7 @@ import numpy as np
 cimport numpy as np
 cimport cython
 cimport openmp
-from cython.parallel import prange
+from cython.parallel import prange, parallel
 from libc.math cimport exp as cexp
 from libc.stdlib cimport rand as crand
 from libc.stdlib cimport RAND_MAX as RAND_MAX
@@ -36,6 +36,7 @@ def ClassicalIsingEnergy(spins, J):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.embedsignature(True)
+@cython.cdivision(True)
 cpdef Anneal(np.float_t[:] sched, 
              int mcsteps, 
              np.float_t[:] svec, 
@@ -55,6 +56,7 @@ cpdef Anneal(np.float_t[:] sched,
     # Define some variables
     cdef int nspins = svec.size
     cdef int maxnb = nbs[0].shape[0]
+    cdef int schedsize = sched.size
     cdef int itemp = 0
     cdef float temp = 0.0
     cdef int step = 0
@@ -67,7 +69,7 @@ cpdef Anneal(np.float_t[:] sched,
         rng.permutation(range(nspins))
 
     # Loop over temperatures
-    for itemp in xrange(sched.size):
+    for itemp in xrange(schedsize):
         # Get temperature
         temp = sched[itemp]
         # Do some number of Monte Carlo steps
@@ -98,6 +100,7 @@ cpdef Anneal(np.float_t[:] sched,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.embedsignature(True)
+@cython.cdivision(True)
 cpdef Anneal_parallel(np.float_t[:] sched, 
                       int mcsteps, 
                       np.float_t[:] svec, 
@@ -123,43 +126,44 @@ cpdef Anneal_parallel(np.float_t[:] sched,
     # Define some variables
     cdef int nspins = svec.size
     cdef int maxnb = nbs[0].shape[0]
+    cdef int schedsize = sched.size
     cdef int itemp = 0
     cdef float temp = 0.0
+    cdef int step = 0
     cdef int sidx = 0
     cdef int si = 0
     cdef int spinidx = 0
     cdef float jval = 0.0
     cdef np.ndarray[np.float_t, ndim=1] ediffs = np.zeros(nspins)
 
-    # Loop over temperatures
-    for itemp in xrange(sched.size):
-        # Get temperature
-        temp = sched[itemp]
-        # Do some number of Monte Carlo steps
-        for step in xrange(mcsteps):
-            # Loop over spins
-            # print nthreads, openmp.omp_get_num_threads()
-            for sidx in prange(nspins, nogil=True, 
-                               schedule='guided', 
-                               num_threads=nthreads):
-                # loop through the neighbors
-                for si in xrange(maxnb):
-                    # get the neighbor spin index
-                    spinidx = int(nbs[sidx, si, 0])
-                    # get the coupling value to that neighbor
-                    jval = nbs[sidx, si, 1]
-                    # self-connections are not quadratic
-                    if spinidx == sidx:
-                        ediffs[sidx] += -2.0*svec[sidx]*jval
-                    else:
-                        ediffs[sidx] += -2.0*svec[sidx]*(jval*svec[spinidx])
-                # Accept or reject
-                if ediffs[sidx] > 0.0:  # avoid overflow
-                    svec[sidx] *= -1
-                elif cexp(ediffs[sidx]/temp) > crand()/float(RAND_MAX):
-                    svec[sidx] *= -1
-            # reset
-            ediffs.fill(0.0)
+    with nogil, parallel(num_threads=nthreads):
+        # Loop over temperatures
+        for itemp in xrange(schedsize):
+            # Get temperature
+            temp = sched[itemp]
+            # Do some number of Monte Carlo steps
+            for step in xrange(mcsteps):
+                # Loop over spins
+                # print nthreads, openmp.omp_get_num_threads()
+                for sidx in prange(nspins, schedule='static'):
+                    ediffs[sidx] = 0.0  # reset
+                    # loop through the neighbors
+                    for si in xrange(maxnb):
+                        # get the neighbor spin index
+                        spinidx = int(nbs[sidx, si, 0])
+                        # get the coupling value to that neighbor
+                        jval = nbs[sidx, si, 1]
+                        # self-connections are not quadratic
+                        if spinidx == sidx:
+                            ediffs[sidx] += -2.0*svec[sidx]*jval
+                        else:
+                            ediffs[sidx] += -2.0*svec[sidx]*(jval*svec[spinidx])
+                    # Accept or reject
+                    if ediffs[sidx] > 0.0:  # avoid overflow
+                        svec[sidx] *= -1
+                    elif cexp(ediffs[sidx]/temp) > crand()/float(RAND_MAX):
+                        svec[sidx] *= -1
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -174,6 +178,7 @@ cdef inline bint getbit(np.uint64_t s, int k):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.embedsignature(True)
+@cython.cdivision(True)
 def Anneal_multispin(np.float_t[:] sched, 
                      int mcsteps, 
                      np.float_t[:, :] svec_mat, 
@@ -195,6 +200,7 @@ def Anneal_multispin(np.float_t[:] sched,
     # Define some variables
     cdef int nspins = svec_mat.shape[1]
     cdef int maxnb = nbs[0].shape[0]
+    cdef int schedsize = sched.size
     cdef int itemp = 0
     cdef float temp = 0.0
     cdef int step = 0
@@ -220,7 +226,7 @@ def Anneal_multispin(np.float_t[:] sched,
             if svec_mat[k,si]:
                 svec[si] = svec[si] ^ 0x01
     # Loop over temperatures
-    for itemp in xrange(sched.size):
+    for itemp in xrange(schedsize):
         # Get temperature
         temp = sched[itemp]
         # Do some number of Monte Carlo steps
@@ -253,7 +259,8 @@ def Anneal_multispin(np.float_t[:] sched,
                                 ediffs[k] -= 2.0*jval
                             else:
                                 ediffs[k] += 2.0*jval
-                # prepare to flip those whose Boltzmann weights are larger than random samples
+                # prepare to flip those whose Boltzmann weights are 
+                # larger than random samples
                 sign = np.asarray(np.exp(ediffs/temp) > rands, dtype=np.int8)
                 # set a one and shift left
                 flipmask = 1 if sign[0] else 0
