@@ -284,3 +284,75 @@ def Anneal_multispin(np.float_t[:] sched,
         state = bin(svec[sidx])[2:].rjust(64,'0')
         for k in xrange(len(state)):
             svec_mat[k,sidx] = float(state[k])
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.embedsignature(True)
+@cython.cdivision(True)
+cpdef Anneal_bipartite(np.float_t[:] sched, 
+                       int mcsteps, 
+                       np.float_t[:] lvec, 
+                       np.float_t[:] rvec, 
+                       np.float_t[:, :] J, 
+                       np.float_t[:] lbias,
+                       np.float_t[:] rbias,
+                       rng):
+    """
+    Execute thermal annealing according to @sched, an array of 
+    temperatures, which takes @mcsteps number of Monte Carlo steps 
+    per timestep.
+
+    This version is for a bipartite Ising graph whose state is defined
+    using @lvec and @rvec, a vector of spins for the "left" and "right"
+    spins. We update and calculate energies using the Ising graph @J,
+    which has shape (@lvec.size, @rvec.size). @lbias and @rbias are 
+    vectors of size @lvec and @rvec, which encode the biases on these
+    spins. @rng is the random number generator.
+
+    Returns: None (spins are flipped in-place)
+    """
+    # Define some variables
+    cdef int lspins = lvec.size
+    cdef int rspins = rvec.size
+    cdef int itemp = 0
+    cdef float temp = 0.0
+    cdef int step = 0
+    cdef int sidx = 0
+    cdef int si = 0
+    cdef float ediff = 0.0
+    # Loop over temperatures
+    for itemp in xrange(sched.size):
+        # Get temperature
+        temp = sched[itemp]
+        # Do some number of Monte Carlo steps
+        for step in xrange(mcsteps):
+            # Loop over left spins
+            for sidx in xrange(lspins):
+                # loop through the given spin's neighbors
+                for si in xrange(rspins):
+                    ediff -= 2.0*lvec[sidx]*J[sidx,si]*rvec[si] + \
+                        lbias[sidx]*lvec[sidx] + \
+                        rbias[si]*rvec[si]
+                # Metropolis accept or reject
+                if ediff > 0.0:  # avoid overflow
+                    lvec[sidx] *= -1
+                elif cexp(ediff/temp) > crand()/float(RAND_MAX):
+                    lvec[sidx] *= -1
+                # Reset energy diff value
+                ediff = 0.0
+            # Loop over right spins
+            for sidx in xrange(rspins):
+                # loop through the given spin's neighbors
+                for si in xrange(lspins):
+                    ediff -= 2.0*rvec[sidx]*J[si,sidx]*lvec[si] + \
+                        lbias[si]*lvec[si] + \
+                        rbias[sidx]*rvec[sidx]
+                # Metropolis accept or reject
+                if ediff > 0.0:  # avoid overflow
+                    rvec[sidx] *= -1
+                elif cexp(ediff/temp) > crand()/float(RAND_MAX):
+                    rvec[sidx] *= -1
+                # Reset energy diff value
+                ediff = 0.0
+
