@@ -66,6 +66,10 @@ tannealingsched = np.linspace(preannealingtemp,
 svecs = np.asarray([ [ 2*rng.randint(2)-1 for k in range(nspins) ] 
                      for j in xrange(samples) ], 
                    dtype=np.float)
+problems = ['11111000', '11000001', '01100101', 
+            '01101000', '00010011', '11110100']
+problems = np.array([ bitstr2spins(k) for k in problems ])
+svecs = np.vstack((problems, svecs))
 
 # Try using SA (random start)
 for sa_itr in xrange(samples):

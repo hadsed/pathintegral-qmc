@@ -356,3 +356,108 @@ cpdef Anneal_bipartite(np.float_t[:] sched,
                 # Reset energy diff value
                 ediff = 0.0
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.embedsignature(True)
+@cython.cdivision(True)
+cpdef Anneal_cuda(np.ndarray[np.float_t, ndim=1] sched, 
+                  int mcsteps, 
+                  np.ndarray[np.float_t, ndim=1] svec, 
+                  np.ndarray[np.float_t, ndim=3] nbs, 
+                  rng):
+    """
+    Execute thermal annealing according to @annealingSchedule, an
+    array of temperatures, which takes @mcSteps number of Monte Carlo
+    steps per timestep.
+
+    Starting configuration is given by @spinVector, which we update 
+    and calculate energies using the Ising graph @isingJ. @rng is the 
+    random number generator.
+
+    Returns: None (spins are flipped in-place)
+    """
+    # get what we need for pycuda
+    import sys
+    from pycuda import driver, compiler, gpuarray, tools, characterize
+    from pycuda.curandom import rand as curand
+    # initialize device
+    import pycuda.autoinit
+    # Define some variables
+    cdef int nspins = svec.size
+    cdef int maxnb = nbs[0].shape[0]
+    cdef int schedsize = sched.size
+    cdef int itemp = 0
+    cdef float temp = 0.0
+    cdef int step = 0
+    cdef int sidx = 0
+    cdef int si = 0
+    cdef int spinidx = 0
+    cdef float jval = 0.0
+    cdef float ediff = 0.0
+    # kernel
+    cuda_kernel_template = """
+#include <math.h>
+#include <curand_kernel.h>
+
+extern "C" {
+__global__ void SetupRNGs(curandState *state, unsigned long seed)
+{
+    int id = threadIdx.x;
+    curand_init(seed, id, 0, &state[id]);
+}
+__global__ void UpdateSpins(float temp, double *nbs, double *spins, curandState *gstate)
+{
+    int si, spinidx;
+    double jval, ediff;
+    const uint sidx = threadIdx.x;
+
+    // loop over the neighbors of this spin
+    for(si=0; si < %(MAXNB)s; si++)
+    {
+        // reset
+        ediff = 0.0;
+        // get the neighbor spin index
+        spinidx = int(nbs[sidx * %(MAXNB)s * 2 + sidx*2]);
+        // get coupling value to that neighbor
+        jval = nbs[sidx * %(MAXNB)s * 2 + sidx*2 + 1];
+        // self-connections are not quadratic
+        if(spinidx == sidx)
+            ediff += -2.0*spins[sidx]*jval;
+        else
+            ediff += -2.0*spins[sidx]*(jval*spins[spinidx]);
+        // Metropolis -- accept or reject
+        if(ediff >= 0.0)
+            spins[sidx] *= -1;
+        else if(exp(ediff/temp) > curand_uniform(&gstate[sidx]))
+//        else if(0.5 > curand_uniform(&gstate[sidx]))
+//        else if(exp(ediff/temp) > 0.5)
+            spins[sidx] *= -1;
+
+    }
+}
+}
+"""
+    cuda_kernel = cuda_kernel_template % {'NSPINS': nspins, 'MAXNB': maxnb}
+    cumodule = compiler.SourceModule(cuda_kernel, no_extern_c=True, keep=True)
+    cuSetupRNGs = cumodule.get_function("SetupRNGs")
+    cuUpdateSpins = cumodule.get_function("UpdateSpins")
+    # setup the random number generators
+    rngstate = driver.mem_alloc(nspins * 
+                                characterize.sizeof('curandState', 
+                                                    '#include <curand_kernel.h>'))
+    cuSetupRNGs(rngstate, np.int16(0), block=(nspins,1,1))
+    # transfer from host to device
+    svec_g = gpuarray.to_gpu(svec)
+    # sched_g = gpuarray.to_gpu(sched)
+    nbs_g = gpuarray.to_gpu(nbs)
+    # Loop over temperatures
+    for itemp in xrange(schedsize):
+        # Get temperature
+        temp = sched[itemp]
+        # Do some number of Monte Carlo steps
+        for step in xrange(mcsteps):
+            cuUpdateSpins(np.float32(temp), nbs_g, svec_g, rngstate,
+                          block=(nspins,1,1))
+    # transfer from device back to host
+    svec[:] = svec_g.get()
+
