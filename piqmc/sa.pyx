@@ -101,6 +101,66 @@ cpdef Anneal(np.float_t[:] sched,
 @cython.wraparound(False)
 @cython.embedsignature(True)
 @cython.cdivision(True)
+cpdef Anneal_dense(np.float_t[:] sched, 
+                   int mcsteps, 
+                   np.float_t[:] svec, 
+                   np.float_t[:, :] J, 
+                   rng):
+    """
+    Execute thermal annealing according to @annealingSchedule, an
+    array of temperatures, which takes @mcSteps number of Monte Carlo
+    steps per timestep.
+
+    Starting configuration is given by @spinVector, which we update 
+    and calculate energies using the Ising graph @isingJ. @rng is the 
+    random number generator.
+
+    Returns: None (spins are flipped in-place)
+    """
+    # Define some variables
+    cdef int nspins = svec.size
+    cdef int itemp = 0
+    cdef float temp = 0.0
+    cdef int step = 0
+    cdef int sidx = 0
+    cdef int si = 0
+    cdef float ediff = 0.0
+    cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
+        rng.permutation(range(nspins))
+
+    # Loop over temperatures
+    for itemp in xrange(sched.size):
+        # Get temperature
+        temp = sched[itemp]
+        # Do some number of Monte Carlo steps
+        for step in xrange(mcsteps):
+            # Loop over spins
+            for sidx in sidx_shuff:
+                # loop through the given spin's neighbors
+                for si in xrange(nspins):
+                    # self-connections are not quadratic
+                    if si == sidx:
+                        ediff += -2.0*svec[sidx]*J[sidx,si]
+                    # calculate the energy diff of flipping this spin
+                    else:
+                        # incase we only have upper triangle
+                        if sidx < si:
+                            ediff += -2.0*svec[sidx]*(J[sidx,si]*svec[si])
+                        elif sidx > si:
+                            ediff += -2.0*svec[sidx]*(J[si,sidx]*svec[si])
+                # Metropolis accept or reject
+                if ediff > 0.0:  # avoid overflow
+                    svec[sidx] *= -1
+                elif cexp(ediff/temp) > crand()/float(RAND_MAX):
+                    svec[sidx] *= -1
+                # Reset energy diff value
+                ediff = 0.0
+            sidx_shuff = rng.permutation(sidx_shuff)
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.embedsignature(True)
+@cython.cdivision(True)
 cpdef Anneal_parallel(np.float_t[:] sched, 
                       int mcsteps, 
                       np.float_t[:] svec, 
@@ -455,6 +515,31 @@ __global__ void UpdateSpins(double temp, double *nbs, double *spins, curandState
         for step in xrange(mcsteps):
             cuUpdateSpins(np.float64(temp), nbs_g, svec_g, rngstate,
                           block=(nspins,1,1))
+            print svec_g.get()
+
+
+            # # Loop over spins
+            # for sidx in xrange(nspins):
+            #     # loop through the given spin's neighbors
+            #     for si in xrange(maxnb):
+            #         # get the neighbor spin index
+            #         spinidx = int(nbs[sidx,si,0])
+            #         # get the coupling value to that neighbor
+            #         jval = nbs[sidx,si,1]
+            #         # self-connections are not quadratic
+            #         if spinidx == sidx:
+            #             ediff += -2.0*svec[sidx]*jval
+            #         # calculate the energy diff of flipping this spin
+            #         else:
+            #             ediff += -2.0*svec[sidx]*(jval*svec[spinidx])
+            #     # Metropolis accept or reject
+            #     if ediff >= 0.0:  # avoid overflow
+            #         svec[sidx] *= -1
+            #     elif cexp(ediff/temp) > crand()/float(RAND_MAX):
+            #         svec[sidx] *= -1
+            #     # Reset energy diff value
+            #     ediff = 0.0
+
     # transfer from device back to host
     svec[:] = svec_g.get()
 
