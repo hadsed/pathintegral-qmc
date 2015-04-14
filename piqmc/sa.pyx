@@ -405,35 +405,32 @@ __global__ void SetupRNGs(curandState *state, unsigned long seed)
     int id = threadIdx.x;
     curand_init(seed, id, 0, &state[id]);
 }
-__global__ void UpdateSpins(float temp, double *nbs, double *spins, curandState *gstate)
+__global__ void UpdateSpins(double temp, double *nbs, double *spins, curandState *gstate)
 {
-    int si, spinidx;
-    double jval, ediff;
+    int ni, nidx;
+    double jval;
+
+    double ediff = 0.0;
     const uint sidx = threadIdx.x;
 
     // loop over the neighbors of this spin
-    for(si=0; si < %(MAXNB)s; si++)
+    for(ni=0; ni < %(MAXNB)s; ni++)
     {
-        // reset
-        ediff = 0.0;
         // get the neighbor spin index
-        spinidx = int(nbs[sidx * %(MAXNB)s * 2 + sidx*2]);
+        nidx = (int) nbs[sidx * %(MAXNB)s * 2 + ni*2];
         // get coupling value to that neighbor
-        jval = nbs[sidx * %(MAXNB)s * 2 + sidx*2 + 1];
+        jval = nbs[sidx * %(MAXNB)s * 2 + ni*2 + 1];
         // self-connections are not quadratic
-        if(spinidx == sidx)
+        if(nidx == sidx)
             ediff += -2.0*spins[sidx]*jval;
         else
-            ediff += -2.0*spins[sidx]*(jval*spins[spinidx]);
-        // Metropolis -- accept or reject
-        if(ediff >= 0.0)
-            spins[sidx] *= -1;
-        else if(exp(ediff/temp) > curand_uniform(&gstate[sidx]))
-//        else if(0.5 > curand_uniform(&gstate[sidx]))
-//        else if(exp(ediff/temp) > 0.5)
-            spins[sidx] *= -1;
-
+            ediff += -2.0*spins[sidx]*(jval*spins[nidx]);
     }
+    // Metropolis -- accept or reject
+    if(ediff >= 0.0)
+        spins[sidx] *= -1;
+    else if(exp(ediff/temp) > curand_uniform(&gstate[sidx]))
+        spins[sidx] *= -1;
 }
 }
 """
@@ -443,7 +440,7 @@ __global__ void UpdateSpins(float temp, double *nbs, double *spins, curandState 
     cuUpdateSpins = cumodule.get_function("UpdateSpins")
     # setup the random number generators
     rngstate = driver.mem_alloc(nspins * 
-                                characterize.sizeof('curandState', 
+                                characterize.sizeof('curandStateXORWOW', 
                                                     '#include <curand_kernel.h>'))
     cuSetupRNGs(rngstate, np.int16(0), block=(nspins,1,1))
     # transfer from host to device
@@ -456,7 +453,7 @@ __global__ void UpdateSpins(float temp, double *nbs, double *spins, curandState 
         temp = sched[itemp]
         # Do some number of Monte Carlo steps
         for step in xrange(mcsteps):
-            cuUpdateSpins(np.float32(temp), nbs_g, svec_g, rngstate,
+            cuUpdateSpins(np.float64(temp), nbs_g, svec_g, rngstate,
                           block=(nspins,1,1))
     # transfer from device back to host
     svec[:] = svec_g.get()
