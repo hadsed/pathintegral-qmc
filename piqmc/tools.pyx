@@ -120,3 +120,131 @@ def Generate2DIsingInstance(nRows, rng):
             if (col == row + nRows):
                 J[row, col] = rng.uniform(low=-2, high=2)
     return J
+
+def Generate2DLattice(int nrows, 
+                      int ncols, 
+                      rng, 
+                      int periodic=0):
+    """
+    Generate a 2D square Ising model on a torus (with periodic boundaries).
+    Couplings are between [-1e-8,1e-8] randomly chosen from a uniform distribution.
+    
+    Note: in the code there is mixed usage of "rows" and "columns". @nrows
+    talks about the number of rows in the lattice, but the jrow variable
+    references the row index of the J matrix (i.e. a particular spin).
+
+    Returns: Ising matrix in sparse DOK format
+    """
+    cdef int nspins = nrows*ncols
+    cdef int jrow = 0
+    cdef int jcol = 0
+    # Generate periodic lattice adjacency matrix
+    J = sps.dok_matrix((nspins,nspins), dtype=np.float64)
+    for jrow in xrange(nspins):
+        # periodic vertical (consider first "row" in square lattice only)
+        if (jrow < ncols) and periodic:
+            J[jrow, jrow + ncols*(nrows-1)] = rng.uniform(low=-1e-8, high=1e-8)
+        # periodic horizontal
+        if (jrow % ncols == 0.0) and periodic:
+            J[jrow, jrow+ncols-1] = rng.uniform(low=-1e-8, high=1e-8)
+        # loop through columns
+        for jcol in xrange(jrow, nspins):
+            # horizontal neighbors (we can build it all using right neighbors)
+            if ((jcol == jrow + 1) and 
+                (jrow % ncols != ncols - 1)):  # right neighbor
+                J[jrow, jcol] = rng.uniform(low=-1e-8, high=1e-8)
+            # vertical neighbors (we can build it all using bottom neighbors)
+            if (jcol == jrow + ncols):
+                J[jrow, jcol] = rng.uniform(low=-1e-8, high=1e-8)
+    return J
+
+def GenerateKblockLattice(int nrows, 
+                          int ncols, 
+                          rng, 
+                          int k=1):
+    """
+    Generate an Ising model that extends the 2D lattice case to where each
+    spin has coupling to all other spins in a "block" of radius @k.
+
+    @k = 1:
+             o------o------o
+             |      |      |
+             |      |      |
+             o-----|Z|-----o
+             |      |      |
+             |      |      |
+             o------o------o
+
+    @k = 2:
+
+      o------o------o------o------o
+      |      |      |      |      |
+      |      |      |      |      |
+      o------o------o------o------o
+      |      |      |      |      |
+      |      |      |      |      |
+      o------o-----|Z|-----o------o
+      |      |      |      |      |
+      |      |      |      |      |
+      o------o------o------o------o
+      |      |      |      |      |
+      |      |      |      |      |
+      o------o------o------o------o
+
+
+    where each 'o' is directly coupled to 'Z', the central spin we're 
+    considering. This forms a kind of receptive field around each neuron.
+    Couplings are between [-1e-8,1e-8] randomly chosen from a uniform distribution.
+    
+    Returns: Ising matrix in sparse DOK format
+    """
+    cdef int nspins = nrows*ncols
+    cdef int ispin = 0
+    cdef int jspin = 0
+    cdef int ki = 0
+    cdef int tlc = 0
+    cdef int indicator = 0
+
+    # Generate periodic lattice adjacency matrix
+    J = sps.dok_matrix((nspins,nspins), dtype=np.float64)
+    # loop through spins
+    for ispin in xrange(nspins):
+        # loop over the radii (no self-connections, so no zero)
+        for ki in xrange(1,k+1):
+            # put bounds on what the true radius is in each direction
+            # so it doesn't go beyond the boundaries
+            kleft = ispin % ncols
+            kleft = ki if kleft >= ki else kleft
+            if ((ispin+1) % ncols) != 0:
+                kright = ncols - ((ispin+1) % ncols)
+            else:
+                kright = 0
+            kright = ki if kright >= ki else kright
+            kup = ki
+            while ispin - kup*ncols < 0:
+                kup -= 1
+            kup = ki if kup >= ki else kup
+            kdown = ki
+            while ispin + kdown*ncols >= nspins:
+                kdown -= 1
+            kdown = ki if kdown >= ki else kdown
+            # top left corner spin (make sure it's not a negative index)
+            tlc = max(ispin - (kup)*ncols - kleft, 0)
+            # loop over all spins at ki-th radius
+            # upper side
+            for idx in (tlc+r for r in xrange(kleft+kright+1)):
+                if ispin < idx:
+                    J[ispin, idx] = rng.uniform(low=-1e-8, high=1e-8)
+            # lower side
+            for idx in (tlc+r+(kup+kdown)*ncols for r in xrange(kleft+kright+1)):
+                if ispin < idx:
+                    J[ispin, idx] = rng.uniform(low=-1e-8, high=1e-8)
+            # left side
+            for idx in (tlc+r*ncols for r in xrange(1,kup+kdown+1)):
+                if ispin < idx:
+                    J[ispin, idx] = rng.uniform(low=-1e-8, high=1e-8)
+            # right side
+            for idx in (tlc+kleft+kright+r*ncols for r in xrange(1,kup+kdown+1)):
+                if ispin < idx:
+                    J[ispin, idx] = rng.uniform(low=-1e-8, high=1e-8)
+    return J
