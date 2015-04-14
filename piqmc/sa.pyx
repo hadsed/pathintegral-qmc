@@ -334,13 +334,14 @@ def Anneal_multispin(np.float_t[:] sched,
                 # do the flip
                 svec[sidx] ^= flipmask
                 # reset energy differences
-                ediffs.fill(0.0)
+                for k in xrange(64):
+                    ediffs[k] = 0.0
                 # new random numbers
                 rands = rng.rand(64)
             # reshuffle update order
             sidx_shuff = rng.permutation(sidx_shuff)
     # unpack and return
-    for sidx in xrange(svec.size+1):
+    for sidx in xrange(nspins+1):
         state = bin(svec[sidx])[2:].rjust(64,'0')
         for k in xrange(len(state)):
             svec_mat[k,sidx] = float(state[k])

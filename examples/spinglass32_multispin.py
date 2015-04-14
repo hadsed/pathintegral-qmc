@@ -51,21 +51,16 @@ import numpy as np
 import scipy.sparse as sps
 
 import piqmc.sa as sa
-import piqmc.qmc as qmc
 import piqmc.tools as tools
+
 
 # Define some parameters
 nrows = 32
 nspins = nrows**2
-preannealingsteps = 10
-preannealingmcsteps = 1
 preannealingtemp = 3.0
 annealingtemp = 0.01
-annealingsteps = 100
+annealingsteps = 10000
 annealingmcsteps = 1
-fieldstart = 1.5
-fieldend = 1e-8
-trotterslices = 20
 seed = 1234
 # Random number generator
 rng = np.random.RandomState(seed)

@@ -30,7 +30,7 @@ annealingmcsteps = 100
 trotterslices = 10
 fieldstart = 8.0
 fieldend = 1e-8
-samples = 1000
+samples = 100
 # Random number generator
 seed = None
 rng = np.random.RandomState(seed)
@@ -40,7 +40,7 @@ saveplot = False
 memories = [[-1,-1,-1,-1, 1, 1, 1, 1],
             [-1, 1,-1, 1,-1, 1,-1, 1],
             [-1,-1, 1, 1,-1,-1, 1, 1]]
-inpbias = 0.24
+inpbias = 0.024
 # vinput = [0,0,0,0,0,0,0,0]
 vinput = [-1,-1,-1,1,1,1,1,1]
 # Generate annealing schedules
@@ -240,12 +240,12 @@ def plotcoinc_all(dsa, dqa, energies, ann, mcsteps, save=True):
     ax2.set_ylim([0,1.05*maxheight])
     ax2.set_xlim(xlim)
     # ax2.set_ylabel('Coincidences', fontsize=14, fontweight='bold')
-    ax2.set_xlabel('States (binary converted to decimal)',
-                   fontsize=14, fontweight='bold')
     ax2.set_title('Quantum Annealing', fontsize=12, fontweight='bold')
     # energies
     ax3.plot(ind+width, energies, linewidth=0.8)
     ax3.set_title('Energy Levels', fontsize=12, fontweight='bold')
+    ax3.set_xlabel('States (binary converted to decimal)',
+                   fontsize=14, fontweight='bold')
 
     if save:
         fsaveplot('figs/hopfield_'+str(ann)+'ann_'+str(mcsteps)+'mcs_coinc')

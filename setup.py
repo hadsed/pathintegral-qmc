@@ -18,7 +18,8 @@ extensions = [
         extra_link_args=['-fopenmp']
         ),
     Extension(
-        "piqmc.tools", ["piqmc/tools.pyx"]
+        "piqmc.tools", ["piqmc/tools.pyx"],
+        include_dirs=[numpy.get_include()]
         )
     ]
 
