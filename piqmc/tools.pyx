@@ -7,7 +7,7 @@ File: tools.py
 Author: Hadayat Seddiqi
 Date: 10.07.14
 Description: A few helpful functions for doing simulated
-             quantum annealing simulations.
+             and quantum annealing simulations.
 
 '''
 
@@ -58,14 +58,17 @@ cpdef GenerateNeighbors(int nspins,
     number as necessary, but no more (otherwise it will incur some
     computational cost).
 
-    Inputs:  @npsins   number of spins in the 2D lattice
-             @J        Ising coupling matrix
-             @maxnb    the maximum number of neighbors for any spin
-                       (if self-connections representing local field
-                       terms are present along the diagonal of @J, 
-                       this counts as a "neighbor" as well)
+    Args:
+        @nspins (np.array, float): number of spins in the 2D lattice
+        @J (sp.sparse.matrix, float): Ising coupling matrix
+        @maxnb (int): the maximum number of neighbors for any spin
+                  (if self-connections representing local field
+                  terms are present along the diagonal of @J, 
+                  this counts as a "neighbor" as well)
 
-    Returns: the above specified "neighbors" list as a numpy array.
+    Returns:
+        np.ndarray, float:  the above specified "neighbors" list 
+                            as a 3D numpy array
     """
     # predefining vars
     cdef int ispin = 0
@@ -98,7 +101,12 @@ def Generate2DIsingInstance(nRows, rng):
     Couplings are between [-2,2] randomly chosen from a uniform distribution.
     @nRows is the number of rows (and columns) in the 2D lattice.
     
-    Returns: Ising matrix in sparse DOK format
+    Args:
+        @nRows (int): number of rows in the square Ising matrix
+        @rng (np.RandomState): numpy random number generator object
+
+    Returns:
+        sp.sparse.dok_matrix, float: Ising matrix in sparse DOK format
     """
     # Number of rows in 2D square Ising model
     nSpins = nRows**2
@@ -133,7 +141,15 @@ def Generate2DLattice(int nrows,
     talks about the number of rows in the lattice, but the jrow variable
     references the row index of the J matrix (i.e. a particular spin).
 
-    Returns: Ising matrix in sparse DOK format
+    Args:
+        @nrows (int): number of rows in the 2D Ising matrix
+        @ncols (int): number of columns in the 2D Ising matrix
+        @rng (np.RandomState): numpy random number generator object
+        @periodic (int): binary number specifying periodic boundary
+                         conditions (1) or not (0)
+
+    Returns:
+        sp.sparse.dok_matrix, float: Ising matrix in sparse DOK format
     """
     cdef int nspins = nrows*ncols
     cdef int jrow = 0
@@ -196,7 +212,14 @@ def GenerateKblockLattice(int nrows,
     considering. This forms a kind of receptive field around each neuron.
     Couplings are between [-1e-8,1e-8] randomly chosen from a uniform distribution.
     
-    Returns: Ising matrix in sparse DOK format
+    Args:
+        @nrows (int): number of rows in the 2D Ising matrix
+        @ncols (int): number of columns in the 2D Ising matrix
+        @rng (np.RandomState): numpy random number generator object
+        @k (int): block size as explained above
+
+    Returns:
+        sp.sparse.dok_matrix, float: Ising matrix in sparse DOK format
     """
     cdef int nspins = nrows*ncols
     cdef int ispin = 0

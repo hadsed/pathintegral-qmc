@@ -6,7 +6,7 @@
 File: qmc.py
 Author: Hadayat Seddiqi
 Date: 10.13.14
-Description: Do the path-integral quantum annealing.
+Description: Do path-integral quantum annealing.
              See: 10.1103/PhysRevB.66.094203
 
 '''
@@ -40,17 +40,35 @@ cpdef QuantumAnneal(np.float_t[:] sched,
     H = -\sum_k^P( \sum_ij J_ij s^k_i s^k_j + J_perp \sum_i s^k_i s^k+1_i )
 
     where J_perp = -PT/2 log(tanh(G/PT)). The second term on the RHS is a 
-    1D Ising chain along the extra dimension. In other words, a spin in this
-    Trotter slice is coupled to that same spin in the nearest-neighbor slices.
+    1D Ising chain along the extra dimension. In other words, a spin in 
+    this Trotter slice is coupled to that same spin in the nearest-neighbor
+    slices.
 
-    The quantum annealing is controlled by the transverse field which starts
-    at @transFieldStart and decreases by @transFieldStep for @annealingSteps
-    number of steps. The ambient temperature is @annealingTemperature, and the
-    total number of spins is @nSpins. @isingJ and @perpJ give the parts of the
-    Hamiltonian to calculate the energies, and @configurations is a list of
-    spin vectors of length @trotterSlices. @rng is the random number generator.
+    The quantum annealing is controlled by the strength of the transverse 
+    field. This is given as an array of field values in @sched. @confs 
+    stores the spin configurations for each replica which are updated 
+    sequentially.
 
-    Returns: None (spins are flipped in-place)
+    Args:
+        @sched (np.array, float): an array of temperatures that specify
+                                  the annealing schedule
+        @mcsteps (int): number of sweeps to do on each annealing step
+        @slices (int): number of replicas
+        @temp (float): ambient temperature
+        @confs (np.ndarray, float): contains the starting configurations
+                                    for all Trotter replicas
+        @nbs (np.ndarray, float): 3D array whose 1st dimension indexes
+                                  each spin, 2nd dimension indexes
+                                  neighbors to some spin, and 3rd
+                                  dimension indexes the spin index
+                                  of that neighbor (first element)
+                                  or the coupling value to that
+                                  neighbor (second element). See
+                                  tools.GenerateNeighbors().
+        @rng (np.RandomState): numpy random number generator object
+
+    Returns:
+        None: spins are flipped in-place within @svec
     """
     # Define some variables
     cdef int maxnb = nbs[0].shape[0]
@@ -69,7 +87,6 @@ cpdef QuantumAnneal(np.float_t[:] sched,
     cdef int tright = 0
     cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
         rng.permutation(range(nspins))
-
     # Loop over transverse field annealing schedule
     for ifield in xrange(sched.size):
 	# Calculate new coefficient for 1D Ising J
@@ -134,19 +151,39 @@ cpdef QuantumAnneal_parallel(np.float_t[:] sched,
     H = -\sum_k^P( \sum_ij J_ij s^k_i s^k_j + J_perp \sum_i s^k_i s^k+1_i )
 
     where J_perp = -PT/2 log(tanh(G/PT)). The second term on the RHS is a 
-    1D Ising chain along the extra dimension. In other words, a spin in this
-    Trotter slice is coupled to that same spin in the nearest-neighbor slices.
+    1D Ising chain along the extra dimension. In other words, a spin in 
+    this Trotter slice is coupled to that same spin in the nearest-neighbor
+    slices.
 
-    The quantum annealing is controlled by the transverse field which starts
-    at @transFieldStart and decreases by @transFieldStep for @annealingSteps
-    number of steps. The ambient temperature is @annealingTemperature, and the
-    total number of spins is @nSpins. @isingJ and @perpJ give the parts of the
-    Hamiltonian to calculate the energies, and @configurations is a list of
-    spin vectors of length @trotterSlices. @rng is the random number generator.
+    The quantum annealing is controlled by the strength of the transverse 
+    field. This is given as an array of field values in @sched. @confs 
+    stores the spin configurations for each replica which are updated 
+    sequentially.
 
-    This version attempts parallelization with OpenMP directives from Cython.
+    This version uses straightforward OpenMP threading to parallelize
+    over inner spin-update loop.
 
-    Returns: None (spins are flipped in-place)
+    Args:
+        @sched (np.array, float): an array of temperatures that specify
+                                  the annealing schedule
+        @mcsteps (int): number of sweeps to do on each annealing step
+        @slices (int): number of replicas
+        @temp (float): ambient temperature
+        @confs (np.ndarray, float): contains the starting configurations
+                                    for all Trotter replicas
+        @nbs (np.ndarray, float): 3D array whose 1st dimension indexes
+                                  each spin, 2nd dimension indexes
+                                  neighbors to some spin, and 3rd
+                                  dimension indexes the spin index
+                                  of that neighbor (first element)
+                                  or the coupling value to that
+                                  neighbor (second element). See
+                                  tools.GenerateNeighbors().
+        @rng (np.RandomState): numpy random number generator object
+        @nthreads (int): number of threads to execute in parallel
+
+    Returns:
+        None: spins are flipped in-place within @svec
     """
     # Define some variables
     cdef int maxnb = nbs[0].shape[0]
@@ -164,7 +201,6 @@ cpdef QuantumAnneal_parallel(np.float_t[:] sched,
     cdef int tright = 0
     # only reason we don't use memoryview is because we need arr.fill()
     cdef np.ndarray[np.float_t, ndim=1] ediffs = np.zeros(nspins)
-
     # Loop over transverse field annealing schedule
     for ifield in xrange(sched.size):
 	# Calculate new coefficient for 1D Ising J

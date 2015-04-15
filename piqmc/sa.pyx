@@ -6,7 +6,7 @@
 File: sa.pyx
 Author: Hadayat Seddiqi
 Date: 10.13.14
-Description: Do thermal annealing on a (sparse) Ising system.
+Description: Thermal annealing routines for Ising models.
 
 '''
 
@@ -27,6 +27,16 @@ def ClassicalIsingEnergy(spins, J):
     Calculate energy for Ising graph @J in configuration @spins.
     Generally not needed for the annealing process but useful to
     have around at the end of simulations.
+
+    Args:
+        @spins (np.array, float): configuration of spins (values +/-1)
+        @J (np.ndarray, float): coupling matrix where off-diagonals
+                                store coupling values and diagonal
+                                stores local field biases
+
+    Returns:
+        float: the energy of configuration @spins in an Ising
+               system specified by @J
     """
     J = np.asarray(J.todense())
     d = np.diag(np.diag(J))
@@ -43,15 +53,28 @@ cpdef Anneal(np.float_t[:] sched,
              np.float_t[:, :, :] nbs, 
              rng):
     """
-    Execute thermal annealing according to @annealingSchedule, an
-    array of temperatures, which takes @mcSteps number of Monte Carlo
-    steps per timestep.
+    Execute thermal annealing according to @sched with @mcsteps
+    sweeps for each annealing step. Starting configuration is 
+    given by @svec, which we update in-place and calculate energies
+    using the "neighbors array" @nbs.
 
-    Starting configuration is given by @spinVector, which we update 
-    and calculate energies using the Ising graph @isingJ. @rng is the 
-    random number generator.
+    Args:
+        @sched (np.array, float): an array of temperatures that specify
+                                  the annealing schedule
+        @mcsteps (int): number of sweeps to do on each annealing step
+        @svec (np.array, float): contains the starting configuration
+        @nbs (np.ndarray, float): 3D array whose 1st dimension indexes
+                                  each spin, 2nd dimension indexes
+                                  neighbors to some spin, and 3rd
+                                  dimension indexes the spin index
+                                  of that neighbor (first element)
+                                  or the coupling value to that
+                                  neighbor (second element). See
+                                  tools.GenerateNeighbors().
+        @rng (np.RandomState): numpy random number generator object
 
-    Returns: None (spins are flipped in-place)
+    Returns:
+        None: spins are flipped in-place within @svec
     """
     # Define some variables
     cdef int nspins = svec.size
@@ -67,7 +90,6 @@ cpdef Anneal(np.float_t[:] sched,
     cdef float ediff = 0.0
     cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
         rng.permutation(range(nspins))
-
     # Loop over temperatures
     for itemp in xrange(schedsize):
         # Get temperature
@@ -107,15 +129,23 @@ cpdef Anneal_dense(np.float_t[:] sched,
                    np.float_t[:, :] J, 
                    rng):
     """
-    Execute thermal annealing according to @annealingSchedule, an
-    array of temperatures, which takes @mcSteps number of Monte Carlo
-    steps per timestep.
+    Execute thermal annealing according to @sched with @mcsteps
+    sweeps for each annealing step. Starting configuration is 
+    given by @svec, which we update in-place and calculate energies
+    using the coupling matrix @J.
 
-    Starting configuration is given by @spinVector, which we update 
-    and calculate energies using the Ising graph @isingJ. @rng is the 
-    random number generator.
+    Args:
+        @sched (np.array, float): an array of temperatures that specify
+                                  the annealing schedule
+        @mcsteps (int): number of sweeps to do on each annealing step
+        @svec (np.array, float): contains the starting configuration
+        @J (np.ndarray, float): coupling matrix where off-diagonals
+                                store coupling values and diagonal
+                                stores local field biases
+        @rng (np.RandomState): numpy random number generator object
 
-    Returns: None (spins are flipped in-place)
+    Returns:
+        None: spins are flipped in-place within @svec
     """
     # Define some variables
     cdef int nspins = svec.size
@@ -127,7 +157,6 @@ cpdef Anneal_dense(np.float_t[:] sched,
     cdef float ediff = 0.0
     cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
         rng.permutation(range(nspins))
-
     # Loop over temperatures
     for itemp in xrange(sched.size):
         # Get temperature
@@ -167,21 +196,31 @@ cpdef Anneal_parallel(np.float_t[:] sched,
                       np.float_t[:, :, :] nbs, 
                       int nthreads):
     """
-    Execute thermal annealing according to @annealingSchedule, an
-    array of temperatures, which takes @mcSteps number of Monte Carlo
-    steps per timestep.
+    Execute thermal annealing according to @sched with @mcsteps
+    sweeps for each annealing step. Starting configuration is 
+    given by @svec, which we update in-place and calculate energies
+    using the "neighbors array" @nbs.
 
-    Starting configuration is given by @spinVector, which we update 
-    and calculate energies using the Ising graph @isingJ.
+    This version uses straightforward OpenMP threading to parallelize
+    over inner spin-update loop.
 
-    This version attempts to do thread parallelization with Cython's
-    built-in OpenMP directive "prange". The extra argument @nthreads
-    specifies how many workers to split the spin updates amongst.
+    Args:
+        @sched (np.array, float): an array of temperatures that specify
+                                  the annealing schedule
+        @mcsteps (int): number of sweeps to do on each annealing step
+        @svec (np.array, float): contains the starting configuration
+        @nbs (np.ndarray, float): 3D array whose 1st dimension indexes
+                                  each spin, 2nd dimension indexes
+                                  neighbors to some spin, and 3rd
+                                  dimension indexes the spin index
+                                  of that neighbor (first element)
+                                  or the coupling value to that
+                                  neighbor (second element). See
+                                  tools.GenerateNeighbors().
+        @rng (np.RandomState): numpy random number generator object
 
-    Note that while the sequential version randomizes the order of
-    spin updates, this version does not.
-
-    Returns: None (spins are flipped in-place)
+    Returns:
+        None: spins are flipped in-place within @svec
     """
     # Define some variables
     cdef int nspins = svec.size
@@ -245,17 +284,34 @@ def Anneal_multispin(np.float_t[:] sched,
                      np.float_t[:, :, :] nbs, 
                      rng):
     """
-    Execute thermal annealing according to @sched, an array of temperatures, 
-    which takes @mcsteps number of Monte Carlo steps per timestep.
+    Execute 64 simultaneous thermal annealing according to @sched 
+    with @mcsteps sweeps for each annealing step. Starting configurations
+    are given by @svec_mat, which we update in-place and calculate energies
+    using the "neighbors array" @nbs.
 
-    This is a multispin encoding version, where we encode many parallel
-    simulation states in the bits of some integers. Namely, we start with
-    @svec_mat which has 32 or 64 rows denoting individual start states.
-    We update and calculate energies using the neighbors datastructure @nbs,
-    which encodes information from the problem's Ising graph. @rng is the 
-    random number generator.
+    This version takes in a set of 64 configurations and packs them into
+    integer arrays (since they are binary states) and uses bitwise
+    operators to propagate the states simultaneously.
 
-    Returns: None (spins are flipped in-place)
+    Args:
+        @sched (np.array, float): an array of temperatures that specify
+                                  the annealing schedule
+        @mcsteps (int): number of sweeps to do on each annealing step
+        @svec_mat (np.ndarray, float): contains 64 starting configurations
+                                       where each row denotes a starting
+                                       configuration
+        @nbs (np.ndarray, float): 3D array whose 1st dimension indexes
+                                  each spin, 2nd dimension indexes
+                                  neighbors to some spin, and 3rd
+                                  dimension indexes the spin index
+                                  of that neighbor (first element)
+                                  or the coupling value to that
+                                  neighbor (second element). See
+                                  tools.GenerateNeighbors().
+        @rng (np.RandomState): numpy random number generator object
+
+    Returns:
+        None: spins are flipped in-place within @svec_mat
     """
     # Define some variables
     cdef int nspins = svec_mat.shape[1]
@@ -270,11 +326,12 @@ def Anneal_multispin(np.float_t[:] sched,
     cdef float jval = 0.0
     cdef int k = 0
     cdef np.uint64_t flipmask = 0
-    cdef np.ndarray[np.uint64_t, ndim=1] svec = np.zeros(nspins, dtype=np.uint64)
-    cdef np.ndarray[np.int8_t, ndim=1] sign = np.zeros(64, dtype=np.int8)
-    cdef np.ndarray[np.int64_t, ndim=1] spinstate = np.zeros(64, dtype=np.int64) ###
     cdef np.ndarray[np.float_t, ndim=1] ediffs = np.zeros(64)
     cdef np.ndarray[np.float_t, ndim=1] rands = rng.rand(64)
+    cdef np.ndarray[np.uint64_t, ndim=1] svec = \
+        np.zeros(nspins, dtype=np.uint64)
+    cdef np.ndarray[np.int8_t, ndim=1] sign = \
+        np.zeros(64, dtype=np.int8)
     cdef np.ndarray[np.int_t, ndim=1] sidx_shuff = \
         rng.permutation(range(nspins))
     # encode @svec_mat into the bits of svec elements
@@ -346,7 +403,6 @@ def Anneal_multispin(np.float_t[:] sched,
         for k in xrange(len(state)):
             svec_mat[k,sidx] = float(state[k])
 
-
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.embedsignature(True)
@@ -360,18 +416,39 @@ cpdef Anneal_bipartite(np.float_t[:] sched,
                        np.float_t[:] rbias,
                        rng):
     """
-    Execute thermal annealing according to @sched, an array of 
-    temperatures, which takes @mcsteps number of Monte Carlo steps 
-    per timestep.
+    Execute thermal annealing according to @sched with @mcsteps
+    sweeps for each annealing step. Starting configuration is 
+    given by @lvec and @rvec, which we update in-place and calculate 
+    energies using the "neighbors array" @nbs.
 
     This version is for a bipartite Ising graph whose state is defined
     using @lvec and @rvec, a vector of spins for the "left" and "right"
     spins. We update and calculate energies using the Ising graph @J,
     which has shape (@lvec.size, @rvec.size). @lbias and @rbias are 
     vectors of size @lvec and @rvec, which encode the biases on these
-    spins. @rng is the random number generator.
+    spins.
 
-    Returns: None (spins are flipped in-place)
+    Args:
+        @sched (np.array, float): an array of temperatures that specify
+                                  the annealing schedule
+        @mcsteps (int): number of sweeps to do on each annealing step
+        @lvec (np.array, float): contains the starting configuration for
+                                 the "left" collection of independent
+                                 spins
+        @rvec (np.array, float): contains the starting configuration for
+                                 the "right" collection of independent
+                                 spins
+        @lbias (np.array, float): contains the "left" collection local
+                                  field biases
+        @rbias (np.array, float): contains the "right" collection local
+                                  field biases
+        @J (np.ndarray, float): 2D matrix that stores coupling values on
+                                the off-diagonals, and nothing on the 
+                                diagonals
+        @rng (np.RandomState): numpy random number generator object
+
+    Returns:
+        None: spins are flipped in-place within @svec
     """
     # Define some variables
     cdef int lspins = lvec.size
@@ -427,15 +504,31 @@ cpdef Anneal_cuda(np.ndarray[np.float_t, ndim=1] sched,
                   np.ndarray[np.float_t, ndim=3] nbs, 
                   rng):
     """
-    Execute thermal annealing according to @annealingSchedule, an
-    array of temperatures, which takes @mcSteps number of Monte Carlo
-    steps per timestep.
+    Execute thermal annealing according to @sched with @mcsteps
+    sweeps for each annealing step. Starting configuration is 
+    given by @svec, which we update in-place and calculate energies
+    using the "neighbors array" @nbs.
 
-    Starting configuration is given by @spinVector, which we update 
-    and calculate energies using the Ising graph @isingJ. @rng is the 
-    random number generator.
+    This version uses PyCUDA and an Nvidia GPU to parallelize over 
+    inner spin-update loop.
 
-    Returns: None (spins are flipped in-place)
+    Args:
+        @sched (np.array, float): an array of temperatures that specify
+                                  the annealing schedule
+        @mcsteps (int): number of sweeps to do on each annealing step
+        @svec (np.array, float): contains the starting configuration
+        @nbs (np.ndarray, float): 3D array whose 1st dimension indexes
+                                  each spin, 2nd dimension indexes
+                                  neighbors to some spin, and 3rd
+                                  dimension indexes the spin index
+                                  of that neighbor (first element)
+                                  or the coupling value to that
+                                  neighbor (second element). See
+                                  tools.GenerateNeighbors().
+        @rng (np.RandomState): numpy random number generator object
+
+    Returns:
+        None: spins are flipped in-place within @svec
     """
     # get what we need for pycuda
     import sys
