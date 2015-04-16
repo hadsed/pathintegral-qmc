@@ -218,6 +218,7 @@ cpdef Anneal_parallel(np.float_t[:] sched,
                                   neighbor (second element). See
                                   tools.GenerateNeighbors().
         @rng (np.RandomState): numpy random number generator object
+        @nthreads (int): number of threads to execute in parallel
 
     Returns:
         None: spins are flipped in-place within @svec
