@@ -274,7 +274,7 @@ print "True magnetization: ", np.sum(groundstate)
 print "True magnetization per spin: ", np.sum(groundstate)/float(nspins)
 print '\n'
 # Get list of nearest-neighbors for each spin
-# neighbors = GenerateNeighbors(
+# neighbors = tools.GenerateNeighbors(
 #     nspins, 
 #     isingJ, 
 #     4,
