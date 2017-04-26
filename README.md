@@ -1,6 +1,7 @@
 # pathintegral-qmc
 A path-integral quantum Monte Carlo code for simulating quantum annealing with arbitrary Ising Hamiltonians. It is written based on the 2002 Phys. Rev. B paper by Martonak, Santoro, and Tosatti entitled, 'Quantum annealing by the path-integral Monte Carlo method: The two-dimensional random Ising model' (you may find a free copy of this on arxiv.org).
 
+See the `docs/` folder for notes and a presentation explaining the purpose and mathematics behind this library.
 ## Requirements
 This simulation package is written in Cython and requires ```scipy``` and ```numpy```. The C files are included with the .pyx. Installation requires ```setuptools```. There is an example that requires ```mpi4py```, but this is not a general requirement.
 
